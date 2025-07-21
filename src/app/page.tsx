@@ -81,7 +81,10 @@ export default function TerminalChat() {
 
   const connectToChat = () => {
     if (username.trim()) {
-      const newSocket = io()
+      const newSocket = io({
+        secure: true,
+        transports: ['websocket', 'polling']
+      })
       setSocket(newSocket)
       setIsConnected(true)
       
