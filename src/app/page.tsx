@@ -226,25 +226,25 @@ export default function TerminalChat() {
     <main className="h-screen bg-terminal-bg text-terminal-text font-mono flex flex-col overflow-hidden relative">
       <Oscilloscope typingData={typingUsers} currentTyping={currentMessage} />
       
-      {/* User Count Dashboard - Top Right Corner */}
-      <div className="fixed top-4 right-4 z-30 bg-black/80 backdrop-blur-sm rounded-lg border border-terminal-rust/50 p-3">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-terminal-rust animate-pulse"></div>
-          <span className="text-terminal-rust text-sm font-mono">
+      {/* User Count Dashboard - Responsive positioning */}
+      <div className="fixed top-2 right-2 sm:top-4 sm:right-4 z-30 bg-black/80 backdrop-blur-sm rounded-lg border border-terminal-rust/50 p-2 sm:p-3">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-terminal-rust animate-pulse"></div>
+          <span className="text-terminal-rust text-xs sm:text-sm font-mono">
             {userCount} {userCount === 1 ? 'user' : 'users'}
           </span>
         </div>
       </div>
       
-      {/* Full screen chat with floating media player */}
-      <div className="flex-1 p-6 overflow-hidden flex flex-col relative z-20">
-        <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin bg-black/60 backdrop-blur-sm rounded p-4 border border-terminal-dark/30">
+      {/* Mobile-optimized chat layout */}
+      <div className="flex-1 p-2 sm:p-6 overflow-hidden flex flex-col relative z-20">
+        <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin bg-black/60 backdrop-blur-sm rounded p-2 sm:p-4 border border-terminal-dark/30">
           {messages.map((message) => (
             <div key={message.id} className="animate-fade-in">
               <span className="text-terminal-dim text-xs">
                 [{formatTime(message.timestamp)}]
               </span>
-              <span className={`ml-2 text-sm ${
+              <span className={`ml-1 sm:ml-2 text-xs sm:text-sm ${
                 message.username === 'SYSTEM' 
                   ? 'text-terminal-bright' 
                   : message.username === username
@@ -253,7 +253,7 @@ export default function TerminalChat() {
               }`}>
                 {message.username}:
               </span>
-              <span className="ml-2 text-terminal-text">
+              <span className="ml-1 sm:ml-2 text-terminal-text text-xs sm:text-sm break-words">
                 {message.content}
               </span>
             </div>
@@ -262,14 +262,14 @@ export default function TerminalChat() {
           {typingUsers
             .sort((a, b) => (a.position || 0) - (b.position || 0))
             .map((user) => (
-            <div key={user.username} className="text-terminal-dim text-sm opacity-75">
+            <div key={user.username} className="text-terminal-dim text-xs sm:text-sm opacity-75">
               <span className="text-terminal-dark text-xs">
                 [typing]
               </span>
-              <span className="ml-2 text-terminal-rust">
+              <span className="ml-1 sm:ml-2 text-terminal-rust">
                 {user.username}:
               </span>
-              <span className="ml-2">
+              <span className="ml-1 sm:ml-2 break-words">
                 {user.content}
                 <span className="animate-cursor-blink">█</span>
               </span>
@@ -279,9 +279,12 @@ export default function TerminalChat() {
           <div ref={messagesEndRef} />
         </div>
         
-        <div className="flex items-center mt-4 pt-4 border-t border-gray-800 bg-black/60 backdrop-blur-sm rounded p-3">
-          <span className="text-terminal-amber mr-2">
+        <div className="flex items-center mt-2 sm:mt-4 pt-2 sm:pt-4 border-t border-gray-800 bg-black/60 backdrop-blur-sm rounded p-2 sm:p-3">
+          <span className="text-terminal-amber mr-1 sm:mr-2 text-xs sm:text-sm hidden sm:inline">
             {username}@system:~$
+          </span>
+          <span className="text-terminal-amber mr-1 text-xs sm:hidden">
+            $
           </span>
           <div className="flex-1 relative">
             <input
@@ -290,14 +293,14 @@ export default function TerminalChat() {
               value={currentMessage}
               onChange={(e) => handleTyping(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="bg-transparent border-none outline-none w-full text-terminal-text caret-transparent focus:outline-none focus:ring-0 focus:border-transparent"
+              className="bg-transparent border-none outline-none w-full text-terminal-text caret-transparent focus:outline-none focus:ring-0 focus:border-transparent text-xs sm:text-sm"
               placeholder=""
               autoFocus
             />
             <span 
-              className="absolute text-terminal-amber animate-cursor-blink pointer-events-none"
+              className="absolute text-terminal-amber animate-cursor-blink pointer-events-none text-xs sm:text-sm"
               style={{ 
-                left: `${currentMessage.length * 0.6}em`,
+                left: `${currentMessage.length * (typeof window !== 'undefined' && window.innerWidth < 768 ? 0.5 : 0.6)}em`,
                 top: 0,
                 lineHeight: 'inherit'
               }}

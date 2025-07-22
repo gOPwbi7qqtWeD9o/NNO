@@ -1,6 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Socket } from 'socket.io-client'
 
+// YouTube Player API type declarations
+declare global {
+  interface Window {
+    YT: {
+      Player: any
+      PlayerState: {
+        ENDED: number
+      }
+    }
+    onYouTubeIframeAPIReady: () => void
+  }
+}
+
 interface MediaPlayerProps {
   socket: Socket | null
   username: string
@@ -34,14 +47,32 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
   const [cooldownRemaining, setCooldownRemaining] = useState(0)
   const [queueList, setQueueList] = useState<QueueItem[]>([])
   const [currentlyPlaying, setCurrentlyPlaying] = useState<CurrentlyPlaying | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
   const windowRef = useRef<HTMLDivElement>(null)
+  const playerRef = useRef<any>(null) // YouTube Player API reference
 
   // Ensure this only runs on the client
   useEffect(() => {
     setIsClient(true)
     if (typeof window !== 'undefined') {
-      // Position it more centered and lower on screen
-      setPosition({ x: window.innerWidth - 450, y: 100 })
+      // Check if mobile and set state
+      const checkMobile = () => {
+        setIsMobile(window.innerWidth < 768)
+      }
+      
+      checkMobile()
+      window.addEventListener('resize', checkMobile)
+      
+      // Mobile-friendly positioning
+      if (window.innerWidth < 768) {
+        // On mobile, position at bottom center
+        setPosition({ x: 10, y: window.innerHeight - 180 })
+      } else {
+        // Desktop positioning
+        setPosition({ x: window.innerWidth - 450, y: 100 })
+      }
+      
+      return () => window.removeEventListener('resize', checkMobile)
     }
   }, [])
 
@@ -115,6 +146,16 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
 
     // Cleanup listeners
     return () => {
+      // Cleanup YouTube player
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy()
+          playerRef.current = null
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+      
       socket.off('media_state_sync')
       socket.off('media_play')
       socket.off('media_pause')
@@ -124,7 +165,88 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       socket.off('queue_update')
       socket.off('message')
     }
-  }, [socket])
+  }, [socket, username])
+
+  // YouTube Player API setup
+  useEffect(() => {
+    if (!isClient || typeof window === 'undefined') return
+
+    // Wait for YouTube API to load
+    const initYouTubeAPI = () => {
+      if (window.YT && window.YT.Player) {
+        // API is ready
+        return
+      }
+      
+      // Set up the callback for when API loads
+      window.onYouTubeIframeAPIReady = () => {
+        console.log('YouTube API ready')
+      }
+    }
+
+    // Check if API is already loaded or load it
+    if (window.YT) {
+      initYouTubeAPI()
+    } else {
+      // Wait for script to load
+      const checkAPI = setInterval(() => {
+        if (window.YT) {
+          clearInterval(checkAPI)
+          initYouTubeAPI()
+        }
+      }, 100)
+      
+      // Cleanup interval after 10 seconds
+      setTimeout(() => clearInterval(checkAPI), 10000)
+    }
+  }, [isClient])
+
+  // Initialize YouTube player when videoId changes
+  useEffect(() => {
+    if (!isClient || !videoId || typeof window === 'undefined' || !window.YT || !window.YT.Player) return
+
+    // Wait a bit for the iframe to be in DOM
+    const timeout = setTimeout(() => {
+      const iframeId = `youtube-player-${videoId}`
+      const iframe = document.getElementById(iframeId)
+      
+      if (iframe) {
+        try {
+          // Destroy existing player
+          if (playerRef.current) {
+            try {
+              playerRef.current.destroy()
+            } catch (e) {
+              // Ignore destroy errors
+            }
+          }
+
+          // Create new player
+          playerRef.current = new window.YT.Player(iframeId, {
+            events: {
+              onStateChange: (event: any) => {
+                // YT.PlayerState.ENDED = 0
+                if (event.data === 0) {
+                  console.log('🎵 YouTube video ended, advancing queue')
+                  if (socket) {
+                    socket.emit('media_ended', { username })
+                  }
+                }
+              }
+            }
+          })
+          
+          console.log('YouTube player initialized for', videoId)
+        } catch (error) {
+          console.error('Failed to initialize YouTube player:', error)
+        }
+      }
+    }, 1000)
+
+    return () => {
+      clearTimeout(timeout)
+    }
+  }, [videoId, socket, username, isClient])
 
   // Cooldown timer effect
   useEffect(() => {
@@ -170,11 +292,11 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     return ''
   }
 
-  // Generate embed URL with current mute state
+  // Generate embed URL with current mute state and API enablement
   const generateEmbedUrl = (videoId: string): string => {
     if (!videoId) return ''
     const muteParam = isMuted ? '&mute=1' : '&mute=0'
-    return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1${muteParam}&enablejsapi=1&playsinline=1`
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1${muteParam}&enablejsapi=1&playsinline=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`
   }
 
   const handleUrlSubmit = (e: React.FormEvent) => {
@@ -238,7 +360,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     }
   }
 
-  // Dragging functionality - only works on client
+  // Dragging functionality - supports both mouse and touch
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isClient || !windowRef.current) return
     
@@ -246,8 +368,10 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     e.stopPropagation()
     
     const rect = windowRef.current.getBoundingClientRect()
-    const offsetX = e.clientX - rect.left
-    const offsetY = e.clientY - rect.top
+    const clientX = e.clientX
+    const clientY = e.clientY
+    const offsetX = clientX - rect.left
+    const offsetY = clientY - rect.top
     
     setDragOffset({ x: offsetX, y: offsetY })
     setIsDragging(true)
@@ -255,8 +379,12 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     const handleMouseMove = (e: MouseEvent) => {
       if (typeof window === 'undefined') return
       
-      const newX = Math.max(0, Math.min(window.innerWidth - 400, e.clientX - offsetX))
-      const newY = Math.max(0, Math.min(window.innerHeight - 300, e.clientY - offsetY))
+      const isMobile = window.innerWidth < 768
+      const maxWidth = isMobile ? window.innerWidth - 20 : window.innerWidth - 400
+      const maxHeight = window.innerHeight - (isMobile ? 100 : 300)
+      
+      const newX = Math.max(10, Math.min(maxWidth, e.clientX - offsetX))
+      const newY = Math.max(10, Math.min(maxHeight, e.clientY - offsetY))
       
       setPosition({ x: newX, y: newY })
     }
@@ -269,6 +397,45 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
 
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
+  }
+
+  // Touch support for mobile
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!isClient || !windowRef.current) return
+    
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const rect = windowRef.current.getBoundingClientRect()
+    const touch = e.touches[0]
+    const offsetX = touch.clientX - rect.left
+    const offsetY = touch.clientY - rect.top
+    
+    setDragOffset({ x: offsetX, y: offsetY })
+    setIsDragging(true)
+    
+    const handleTouchMove = (e: TouchEvent) => {
+      if (typeof window === 'undefined' || e.touches.length === 0) return
+      
+      const touch = e.touches[0]
+      const isMobile = window.innerWidth < 768
+      const maxWidth = isMobile ? window.innerWidth - 20 : window.innerWidth - 400
+      const maxHeight = window.innerHeight - (isMobile ? 100 : 300)
+      
+      const newX = Math.max(10, Math.min(maxWidth, touch.clientX - offsetX))
+      const newY = Math.max(10, Math.min(maxHeight, touch.clientY - offsetY))
+      
+      setPosition({ x: newX, y: newY })
+    }
+
+    const handleTouchEnd = () => {
+      setIsDragging(false)
+      document.removeEventListener('touchmove', handleTouchMove)
+      document.removeEventListener('touchend', handleTouchEnd)
+    }
+
+    document.addEventListener('touchmove', handleTouchMove, { passive: false })
+    document.addEventListener('touchend', handleTouchEnd)
   }
 
   // Don't render anything until we're on the client
@@ -285,27 +452,31 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
         style={{
           left: `${position.x}px`,
           top: `${position.y}px`,
-          width: '400px',
-          height: isMinimized ? '40px' : (videoId ? '320px' : '120px'),
+          width: isMobile ? `${typeof window !== 'undefined' ? window.innerWidth - 20 : 350}px` : '400px',
+          maxWidth: isMobile ? `${typeof window !== 'undefined' ? window.innerWidth - 20 : 350}px` : '400px',
+          height: isMinimized ? '40px' : (videoId ? (isMobile ? '250px' : '320px') : '120px'),
           userSelect: 'none',
         }}
       >
           {/* Window Controls */}
           <div
-            className="flex items-center justify-between p-2 bg-terminal-rust/20 border-b border-terminal-rust/30 cursor-move select-none"
+            className="flex items-center justify-between p-2 bg-terminal-rust/20 border-b border-terminal-rust/30 cursor-move select-none touch-none"
             onMouseDown={handleMouseDown}
+            onTouchStart={handleTouchStart}
             style={{ 
               userSelect: 'none',
               pointerEvents: 'auto',
               touchAction: 'none'
             }}
           >
-            <div className="text-terminal-text text-sm font-mono">
-              {isMinimized ? `Shared Media Player ${isMuted ? '(Muted)' : ''}` : 'Shared Media Player'}
-              {videoId && <span className="text-terminal-amber ml-1">● LIVE</span>}
-              {videoId && videoOwner && <span className="text-terminal-dim ml-1">by {videoOwner}</span>}
+            <div className="text-terminal-text text-sm font-mono flex-1 min-w-0">
+              <div className="truncate">
+                {isMinimized ? `Shared Media Player ${isMuted ? '(Muted)' : ''}` : 'Shared Media Player'}
+                {videoId && <span className="text-terminal-amber ml-1">● LIVE</span>}
+                {videoId && videoOwner && <span className="text-terminal-dim ml-1 hidden sm:inline">by {videoOwner}</span>}
+              </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1 sm:gap-2 flex-shrink-0">
               {/* Vote Skip Button - Only show when video is playing */}
               {videoId && (
                 <button
@@ -314,7 +485,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                     handleVoteSkip()
                   }}
                   disabled={hasVoted}
-                  className={`px-2 h-4 rounded-sm text-xs flex items-center justify-center transition-colors ${
+                  className={`px-2 h-6 sm:h-4 rounded-sm text-xs flex items-center justify-center transition-colors ${
                     hasVoted 
                       ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
                       : 'bg-orange-700 hover:bg-orange-600 text-white'
@@ -331,7 +502,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                   e.stopPropagation()
                   handleMuteToggle()
                 }}
-                className={`w-4 h-4 rounded-sm text-xs flex items-center justify-center ${
+                className={`w-6 h-6 sm:w-4 sm:h-4 rounded-sm text-xs flex items-center justify-center ${
                   isMuted 
                     ? 'bg-red-600 hover:bg-red-500 text-white' 
                     : 'bg-terminal-dim hover:bg-terminal-rust text-terminal-bg'
@@ -346,7 +517,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                   e.preventDefault()
                   handleMinimize()
                 }}
-                className="w-4 h-4 bg-terminal-dim hover:bg-terminal-rust rounded-sm text-xs text-terminal-bg flex items-center justify-center"
+                className="w-6 h-6 sm:w-4 sm:h-4 bg-terminal-dim hover:bg-terminal-rust rounded-sm text-xs text-terminal-bg flex items-center justify-center"
                 title={isMinimized ? 'Maximize' : 'Minimize'}
               >
                 {isMinimized ? '□' : '-'}
@@ -360,7 +531,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                     e.preventDefault()
                     handleClose()
                   }}
-                  className="w-4 h-4 bg-red-700 hover:bg-red-600 rounded-sm text-xs text-white flex items-center justify-center"
+                  className="w-6 h-6 sm:w-4 sm:h-4 bg-red-700 hover:bg-red-600 rounded-sm text-xs text-white flex items-center justify-center"
                   title="Close"
                 >
                   &times;
@@ -415,18 +586,20 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
               {queueList.length > 0 && (
                 <div className="mt-2 text-xs text-terminal-dim">
                   <div className="text-terminal-text font-mono">Queue ({queueList.length}):</div>
-                  <div className="mt-1 space-y-1 max-h-20 overflow-y-auto">
-                    {queueList.slice(0, 3).map((item, index) => (
-                      <div key={index} className="flex justify-between">
-                        <span>{index + 1}. {item.queuedBy}</span>
-                        <span className="text-terminal-rust text-xs truncate ml-2 max-w-32">
-                          {item.title.length > 30 ? item.title.substring(0, 30) + '...' : item.title}
+                  <div className="mt-1 space-y-1 max-h-16 sm:max-h-20 overflow-y-auto">
+                    {queueList.slice(0, isMobile ? 2 : 3).map((item, index) => (
+                      <div key={index} className="flex justify-between items-center">
+                        <span className="flex-shrink-0">{index + 1}. {item.queuedBy}</span>
+                        <span className="text-terminal-rust text-xs truncate ml-2 flex-1 text-right sm:max-w-32">
+                          {item.title.length > (isMobile ? 20 : 30) 
+                            ? item.title.substring(0, isMobile ? 20 : 30) + '...' 
+                            : item.title}
                         </span>
                       </div>
                     ))}
-                    {queueList.length > 3 && (
+                    {queueList.length > (isMobile ? 2 : 3) && (
                       <div className="text-terminal-amber text-xs">
-                        +{queueList.length - 3} more songs...
+                        +{queueList.length - (isMobile ? 2 : 3)} more...
                       </div>
                     )}
                   </div>
@@ -439,6 +612,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
           {!isMinimized && videoId && (
             <div className="flex-1 relative">
               <iframe
+                id={`youtube-player-${videoId}`}
                 key={`${videoId}-${isMuted}`}
                 src={generateEmbedUrl(videoId)}
                 className="w-full h-full rounded-b-lg"
