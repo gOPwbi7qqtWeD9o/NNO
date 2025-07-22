@@ -110,6 +110,15 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     // Listen for media mute events
     socket.on('media_mute', ({ isMuted: newMutedState }) => {
       setIsMuted(newMutedState)
+      
+      // Apply mute state to YouTube player if available
+      if (playerRef.current && playerRef.current.mute && playerRef.current.unMute) {
+        if (newMutedState) {
+          playerRef.current.mute()
+        } else {
+          playerRef.current.unMute()
+        }
+      }
     })
 
     // Listen for media stop events
@@ -203,50 +212,82 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
 
   // Initialize YouTube player when videoId changes
   useEffect(() => {
-    if (!isClient || !videoId || typeof window === 'undefined' || !window.YT || !window.YT.Player) return
+    if (!isClient || !videoId || typeof window === 'undefined') return
 
-    // Wait a bit for the iframe to be in DOM
-    const timeout = setTimeout(() => {
-      const iframeId = `youtube-player-${videoId}`
-      const iframe = document.getElementById(iframeId)
-      
-      if (iframe) {
-        try {
-          // Destroy existing player
-          if (playerRef.current) {
-            try {
-              playerRef.current.destroy()
-            } catch (e) {
-              // Ignore destroy errors
-            }
-          }
+    const initPlayer = () => {
+      if (!window.YT || !window.YT.Player) {
+        // YouTube API not ready, try again in 100ms
+        setTimeout(initPlayer, 100)
+        return
+      }
 
-          // Create new player
-          playerRef.current = new window.YT.Player(iframeId, {
-            events: {
-              onStateChange: (event: any) => {
-                // YT.PlayerState.ENDED = 0
-                if (event.data === 0) {
-                  console.log('🎵 YouTube video ended, advancing queue')
-                  if (socket) {
-                    socket.emit('media_ended', { username })
-                  }
-                }
+      // Wait a bit for the iframe to be in DOM
+      setTimeout(() => {
+        const iframeId = `youtube-player-${videoId}`
+        const iframe = document.getElementById(iframeId)
+        
+        if (iframe) {
+          try {
+            // Destroy existing player
+            if (playerRef.current) {
+              try {
+                playerRef.current.destroy()
+              } catch (e) {
+                console.log('Previous player cleanup:', e)
               }
             }
-          })
-          
-          console.log('YouTube player initialized for', videoId)
-        } catch (error) {
-          console.error('Failed to initialize YouTube player:', error)
+
+            // Create new player
+            playerRef.current = new window.YT.Player(iframeId, {
+              events: {
+                onReady: (event: any) => {
+                  console.log('🎵 YouTube player ready for', videoId)
+                  // Apply mute state when player is ready
+                  if (isMuted) {
+                    event.target.mute()
+                  } else {
+                    event.target.unMute()
+                  }
+                },
+                onStateChange: (event: any) => {
+                  console.log('🎵 YouTube player state changed:', event.data)
+                  // YT.PlayerState.ENDED = 0
+                  if (event.data === 0) {
+                    console.log('🎵 YouTube video ended, advancing queue')
+                    if (socket) {
+                      socket.emit('media_ended', { username })
+                    }
+                  }
+                },
+                onError: (event: any) => {
+                  console.error('🎵 YouTube player error:', event.data)
+                }
+              }
+            })
+            
+            console.log('YouTube player initialized for', videoId)
+          } catch (error) {
+            console.error('Failed to initialize YouTube player:', error)
+          }
+        } else {
+          console.warn('Could not find YouTube iframe element')
         }
-      }
-    }, 1000)
+      }, 500) // Increased delay to ensure iframe is ready
+    }
+
+    initPlayer()
 
     return () => {
-      clearTimeout(timeout)
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy()
+          playerRef.current = null
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
     }
-  }, [videoId, socket, username, isClient])
+  }, [videoId, socket, username, isClient, isMuted])
 
   // Cooldown timer effect
   useEffect(() => {
@@ -292,11 +333,10 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     return ''
   }
 
-  // Generate embed URL with current mute state and API enablement
+  // Generate embed URL with API enablement (no mute param to prevent restart)
   const generateEmbedUrl = (videoId: string): string => {
     if (!videoId) return ''
-    const muteParam = isMuted ? '&mute=1' : '&mute=0'
-    return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1${muteParam}&enablejsapi=1&playsinline=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`
   }
 
   const handleUrlSubmit = (e: React.FormEvent) => {
@@ -343,6 +383,16 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
 
   const handleMuteToggle = () => {
     const newMutedState = !isMuted
+    
+    // Use YouTube Player API to mute/unmute without restarting video
+    if (playerRef.current && playerRef.current.mute && playerRef.current.unMute) {
+      if (newMutedState) {
+        playerRef.current.mute()
+      } else {
+        playerRef.current.unMute()
+      }
+    }
+    
     // Emit mute state to all users
     if (socket) {
       socket.emit('media_mute', { 
@@ -613,7 +663,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
             <div className="flex-1 relative">
               <iframe
                 id={`youtube-player-${videoId}`}
-                key={`${videoId}-${isMuted}`}
+                key={videoId} // Remove mute from key to prevent restart
                 src={generateEmbedUrl(videoId)}
                 className="w-full h-full rounded-b-lg"
                 frameBorder="0"
