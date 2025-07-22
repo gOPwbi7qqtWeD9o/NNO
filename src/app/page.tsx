@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import io, { Socket } from 'socket.io-client'
-import Oscilloscope from './components/Oscilloscope'
-// import MediaPlayer from './components/MediaPlayer'
+// import Oscilloscope from './components/Oscilloscope'
+// import MediaPlayerFixed from './components/MediaPlayerFixed'
 
 interface Message {
   id: string
@@ -224,7 +224,7 @@ export default function TerminalChat() {
 
   return (
     <main className="h-screen bg-terminal-bg text-terminal-text font-mono flex flex-col overflow-hidden relative">
-      <Oscilloscope typingData={typingUsers} currentTyping={currentMessage} />
+      {/* <Oscilloscope typingData={typingUsers} currentTyping={currentMessage} /> */}
       
       {/* User Count Dashboard - Top Right Corner */}
       <div className="fixed top-4 right-4 z-30 bg-black/80 backdrop-blur-sm rounded-lg border border-terminal-rust/50 p-3">
@@ -308,8 +308,8 @@ export default function TerminalChat() {
         </div>
       </div>
 
-      {/* Floating Media Player - commented out for launch */}
-      {/* <MediaPlayer /> */}
+      {/* Floating Media Player */}
+      {/* <MediaPlayerFixed /> */}
     </main>
   )
 }

@@ -4,13 +4,14 @@ const next = require('next')
 const { Server } = require('socket.io')
 
 const dev = process.env.NODE_ENV !== 'production'
-const hostname = 'localhost'
+const hostname = '0.0.0.0' // Railway requires 0.0.0.0
 const port = parseInt(process.env.PORT || '3000', 10)
 
 const app = next({ dev, hostname, port })
 const handle = app.getRequestHandler()
 
 app.prepare().then(() => {
+  // Railway handles SSL termination, so we only need HTTP server
   const httpServer = createServer((req, res) => {
     const parsedUrl = parse(req.url, true)
     handle(req, res, parsedUrl)
@@ -20,7 +21,10 @@ app.prepare().then(() => {
     cors: {
       origin: "*",
       methods: ["GET", "POST"]
-    }
+    },
+    // Important for Railway deployment
+    transports: ['websocket', 'polling'],
+    allowEIO3: true
   })
 
   // Store for connected users and their typing states
@@ -100,7 +104,14 @@ app.prepare().then(() => {
     })
   })
 
-  httpServer.listen(port, () => {
+  httpServer.listen(port, hostname, () => {
     console.log(`> Ready on http://${hostname}:${port}`)
+    
+    if (process.env.RAILWAY_ENVIRONMENT) {
+      console.log('🚂 Railway deployment detected')
+      console.log('🔒 SSL automatically handled by Railway')
+    } else {
+      console.log('� Local development mode')
+    }
   })
 })
