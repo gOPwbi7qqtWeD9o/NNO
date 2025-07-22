@@ -104,14 +104,16 @@ app.prepare().then(() => {
     })
   })
 
-  httpServer.listen(port, hostname, () => {
-    console.log(`> Ready on http://${hostname}:${port}`)
+  httpServer.listen(port, () => {
+    console.log(`> Ready on port ${port}`)
     
     if (process.env.RAILWAY_ENVIRONMENT) {
       console.log('🚂 Railway deployment detected')
       console.log('🔒 SSL automatically handled by Railway')
+      console.log('💡 Generate a domain in Railway dashboard to enable HTTPS')
     } else {
-      console.log('� Local development mode')
+      console.log('💻 Local development mode')
+      console.log(`> Access at http://${hostname}:${port}`)
     }
   })
 })
