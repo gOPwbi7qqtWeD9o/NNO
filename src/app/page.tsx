@@ -115,7 +115,7 @@ export default function TerminalChat() {
         socket.off('user_count')
       }
     }
-  }, [socket, isConnected])
+  }, [socket, isConnected, userPositions, nextPosition])
 
   const connectToChat = () => {
     if (username.trim()) {

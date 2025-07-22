@@ -46,12 +46,10 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
     for (const pattern of patterns) {
       const match = cleanUrl.match(pattern)
       if (match && match[1]) {
-        console.log('Matched pattern:', pattern, 'Video ID:', match[1])
         return match[1]
       }
     }
     
-    console.log('No pattern matched for URL:', cleanUrl)
     return ''
   }
 
@@ -59,25 +57,19 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
   const generateEmbedUrl = (videoId: string): string => {
     if (!videoId) return ''
     const muteParam = isMuted ? '&mute=1' : '&mute=0'
-    const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1${muteParam}&enablejsapi=1&playsinline=1`
-    console.log('Generated embed URL:', embedUrl)
-    return embedUrl
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1${muteParam}&enablejsapi=1&playsinline=1`
   }
 
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('Form submitted with URL:', url)
     if (!url.trim()) return
     
     const extractedVideoId = extractYouTubeUrl(url)
-    console.log('Extracted video ID:', extractedVideoId)
     if (extractedVideoId) {
       setVideoId(extractedVideoId)
       setIsMinimized(false)
       setHasError(false) // Reset error state
-      console.log('Video ID set, should show video now')
     } else {
-      console.log('Invalid URL, showing alert')
       alert('Please enter a valid YouTube URL')
     }
   }
@@ -176,7 +168,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
                 }`}
                 title={isMuted ? 'Unmute' : 'Mute'}
               >
-                {isMuted ? '🔇' : '🔊'}
+                {isMuted ? 'M' : 'S'}
               </button>
               <button
                 onClick={(e) => {
@@ -187,7 +179,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
                 className="w-4 h-4 bg-terminal-dim hover:bg-terminal-rust rounded-sm text-xs text-terminal-bg flex items-center justify-center"
                 title={isMinimized ? 'Maximize' : 'Minimize'}
               >
-                {isMinimized ? '□' : '_'}
+                {isMinimized ? '□' : '-'}
               </button>
               <button
                 onClick={(e) => {
@@ -198,7 +190,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
                 className="w-4 h-4 bg-red-700 hover:bg-red-600 rounded-sm text-xs text-white flex items-center justify-center"
                 title="Close"
               >
-                ×
+                &times;
               </button>
             </div>
           </div>
@@ -239,7 +231,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
               {/* Error fallback overlay */}
               {hasError && (
                 <div className="absolute inset-0 bg-terminal-bg/90 flex flex-col items-center justify-center rounded-b-lg">
-                  <div className="text-terminal-text text-sm font-mono mb-2">Video can't be embedded</div>
+                  <div className="text-terminal-text text-sm font-mono mb-2">Video cannot be embedded</div>
                   <button
                     onClick={() => window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank')}
                     className="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded font-mono text-sm transition-colors"
