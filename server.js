@@ -39,6 +39,7 @@ app.prepare().then(() => {
     isPlaying: false,
     isMuted: false,
     timestamp: 0,
+    startTime: null, // When the video started playing (server timestamp)
     lastUpdate: Date.now(),
     queuedBy: '' // Track who queued the current video
   }
@@ -58,6 +59,26 @@ app.prepare().then(() => {
   const messageCooldowns = new Map() // Track user message timestamps
   const MESSAGE_RATE_LIMIT = 8 // Max messages per time window (much more reasonable)
   const RATE_LIMIT_WINDOW_SECONDS = 10 // Time window in seconds
+
+  // Calculate current playback position based on start time
+  const getCurrentPlaybackPosition = () => {
+    if (!mediaPlayerState.videoId || !mediaPlayerState.startTime || !mediaPlayerState.isPlaying) {
+      return 0
+    }
+    
+    const elapsed = Date.now() - mediaPlayerState.startTime
+    const elapsedSeconds = Math.floor(elapsed / 1000)
+    return Math.max(0, elapsedSeconds + mediaPlayerState.timestamp)
+  }
+
+  // Get synchronized media state for clients
+  const getSynchronizedMediaState = () => {
+    return {
+      ...mediaPlayerState,
+      currentTime: getCurrentPlaybackPosition(),
+      serverTime: Date.now() // Send server time for client-side sync calculations
+    }
+  }
 
   // Function to play next song in queue
   const playNextInQueue = () => {
@@ -95,6 +116,7 @@ app.prepare().then(() => {
       isPlaying: true,
       isMuted: mediaPlayerState.isMuted,
       timestamp: 0,
+      startTime: Date.now(), // Record when this video started
       lastUpdate: Date.now(),
       queuedBy: nextSong.queuedBy
     }
@@ -104,7 +126,7 @@ app.prepare().then(() => {
     currentVideoUrl = nextSong.url
     
     // Broadcast new video
-    io.emit('media_play', mediaPlayerState)
+    io.emit('media_play', getSynchronizedMediaState())
     io.emit('skip_votes_update', { 
       votes: skipVotes.size, 
       required: Math.ceil(connectedUsers.size / 2),
@@ -162,7 +184,7 @@ app.prepare().then(() => {
       console.log(`User count updated: ${connectedUsers.size}`)
       
       // Send current media player state to the newly joined user
-      socket.emit('media_state_sync', mediaPlayerState)
+      socket.emit('media_state_sync', getSynchronizedMediaState())
       
       // Send current skip votes if there's a video playing
       if (mediaPlayerState.videoId) {
@@ -274,6 +296,7 @@ app.prepare().then(() => {
           isPlaying: true,
           isMuted: mediaPlayerState.isMuted,
           timestamp: timestamp || 0,
+          startTime: Date.now(), // Record when this video started
           lastUpdate: Date.now(),
           queuedBy: username
         }
@@ -284,7 +307,7 @@ app.prepare().then(() => {
         currentVideoUrl = url
         
         // Broadcast to all clients
-        io.emit('media_play', mediaPlayerState)
+        io.emit('media_play', getSynchronizedMediaState())
         io.emit('skip_votes_update', { 
           votes: skipVotes.size, 
           required: Math.ceil(connectedUsers.size / 2),

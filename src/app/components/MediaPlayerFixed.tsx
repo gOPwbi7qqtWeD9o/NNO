@@ -47,6 +47,12 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
   const [queueList, setQueueList] = useState<QueueItem[]>([])
   const [currentlyPlaying, setCurrentlyPlaying] = useState<CurrentlyPlaying | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  const [syncInfo, setSyncInfo] = useState<{
+    serverTime: number
+    currentTime: number
+    startTime: number | null
+  } | null>(null)
+  const [shouldSync, setShouldSync] = useState(false)
   const windowRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<any>(null) // YouTube Player API reference
 
@@ -86,6 +92,16 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
         setUrl(state.url)
         setVideoOwner(state.queuedBy || '')
         setHasError(false)
+        
+        // Store sync information for time synchronization
+        if (state.currentTime !== undefined && state.serverTime && state.startTime) {
+          setSyncInfo({
+            serverTime: state.serverTime,
+            currentTime: state.currentTime,
+            startTime: state.startTime
+          })
+          setShouldSync(true)
+        }
       }
     })
 
@@ -96,6 +112,16 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setVideoOwner(state.queuedBy || '')
       setHasError(false)
       setHasVoted(false) // Reset vote status for new video
+      
+      // Store sync information for time synchronization
+      if (state.currentTime !== undefined && state.serverTime && state.startTime) {
+        setSyncInfo({
+          serverTime: state.serverTime,
+          currentTime: state.currentTime,
+          startTime: state.startTime
+        })
+        setShouldSync(true)
+      }
     })
 
     // Listen for media pause events
@@ -111,6 +137,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setHasError(false)
       setHasVoted(false) // Reset vote status when video stops
       setVideoOwner('') // Clear video owner
+      setSyncInfo(null) // Clear sync info
+      setShouldSync(false)
     })
 
     // Listen for skip vote updates
@@ -223,6 +251,22 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
               events: {
                 onReady: (event: any) => {
                   console.log('🎵 YouTube player ready for', videoId)
+                  
+                  // Sync to server time if we have sync info
+                  if (shouldSync && syncInfo) {
+                    const now = Date.now()
+                    const timeSinceServerSync = now - syncInfo.serverTime
+                    const targetTime = syncInfo.currentTime + Math.floor(timeSinceServerSync / 1000)
+                    
+                    console.log('🔄 Syncing to server time:', targetTime, 'seconds')
+                    
+                    try {
+                      event.target.seekTo(targetTime, true)
+                      setShouldSync(false) // Only sync once per video
+                    } catch (error) {
+                      console.warn('Failed to sync video time:', error)
+                    }
+                  }
                 },
                 onStateChange: (event: any) => {
                   console.log('🎵 YouTube player state changed:', event.data)
@@ -263,6 +307,29 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       }
     }
   }, [videoId, socket, username, isClient])
+
+  // Handle synchronization when sync info becomes available
+  useEffect(() => {
+    if (!shouldSync || !syncInfo || !playerRef.current) return
+
+    const syncPlayer = () => {
+      try {
+        const now = Date.now()
+        const timeSinceServerSync = now - syncInfo.serverTime
+        const targetTime = syncInfo.currentTime + Math.floor(timeSinceServerSync / 1000)
+        
+        console.log('🔄 Late sync to server time:', targetTime, 'seconds')
+        playerRef.current.seekTo(targetTime, true)
+        setShouldSync(false)
+      } catch (error) {
+        console.warn('Failed to sync video time:', error)
+      }
+    }
+
+    // Small delay to ensure player is fully ready
+    const syncTimeout = setTimeout(syncPlayer, 500)
+    return () => clearTimeout(syncTimeout)
+  }, [shouldSync, syncInfo])
 
   // Cooldown timer effect
   useEffect(() => {
@@ -596,9 +663,14 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
             </div>
           )}
 
-          {/* Video Content */}
-          {!isMinimized && videoId && (
-            <div className="flex-1 relative">
+          {/* Video Content - Always render when videoId exists, but hide when minimized */}
+          {videoId && (
+            <div 
+              className="flex-1 relative"
+              style={{ 
+                display: isMinimized ? 'none' : 'block' 
+              }}
+            >
               <iframe
                 id={`youtube-player-${videoId}`}
                 key={videoId} // Remove mute from key to prevent restart
