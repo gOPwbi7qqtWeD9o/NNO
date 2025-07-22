@@ -35,7 +35,6 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
   const [isClient, setIsClient] = useState(false)
   const [url, setUrl] = useState('')
   const [isMinimized, setIsMinimized] = useState(false)
-  const [isMuted, setIsMuted] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 20 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
@@ -85,7 +84,6 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       if (state.videoId) {
         setVideoId(state.videoId)
         setUrl(state.url)
-        setIsMuted(state.isMuted)
         setVideoOwner(state.queuedBy || '')
         setHasError(false)
       }
@@ -95,7 +93,6 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     socket.on('media_play', (state) => {
       setVideoId(state.videoId)
       setUrl(state.url)
-      setIsMuted(state.isMuted)
       setVideoOwner(state.queuedBy || '')
       setHasError(false)
       setHasVoted(false) // Reset vote status for new video
@@ -107,25 +104,10 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       // But we can show visual indicators or sync state
     })
 
-    // Listen for media mute events
-    socket.on('media_mute', ({ isMuted: newMutedState }) => {
-      setIsMuted(newMutedState)
-      
-      // Apply mute state to YouTube player if available
-      if (playerRef.current && playerRef.current.mute && playerRef.current.unMute) {
-        if (newMutedState) {
-          playerRef.current.mute()
-        } else {
-          playerRef.current.unMute()
-        }
-      }
-    })
-
     // Listen for media stop events
     socket.on('media_stop', () => {
       setVideoId('')
       setUrl('')
-      setIsMuted(false)
       setHasError(false)
       setHasVoted(false) // Reset vote status when video stops
       setVideoOwner('') // Clear video owner
@@ -168,7 +150,6 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       socket.off('media_state_sync')
       socket.off('media_play')
       socket.off('media_pause')
-      socket.off('media_mute')
       socket.off('media_stop')
       socket.off('skip_votes_update')
       socket.off('queue_update')
@@ -242,12 +223,6 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
               events: {
                 onReady: (event: any) => {
                   console.log('🎵 YouTube player ready for', videoId)
-                  // Apply mute state when player is ready
-                  if (isMuted) {
-                    event.target.mute()
-                  } else {
-                    event.target.unMute()
-                  }
                 },
                 onStateChange: (event: any) => {
                   console.log('🎵 YouTube player state changed:', event.data)
@@ -287,7 +262,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
         }
       }
     }
-  }, [videoId, socket, username, isClient, isMuted])
+  }, [videoId, socket, username, isClient])
 
   // Cooldown timer effect
   useEffect(() => {
@@ -379,28 +354,6 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
 
   const handleMinimize = () => {
     setIsMinimized(!isMinimized)
-  }
-
-  const handleMuteToggle = () => {
-    const newMutedState = !isMuted
-    
-    // Use YouTube Player API to mute/unmute without restarting video
-    if (playerRef.current && playerRef.current.mute && playerRef.current.unMute) {
-      if (newMutedState) {
-        playerRef.current.mute()
-      } else {
-        playerRef.current.unMute()
-      }
-    }
-    
-    // Emit mute state to all users
-    if (socket) {
-      socket.emit('media_mute', { 
-        isMuted: newMutedState,
-        username: username 
-      })
-    }
-    // Local state will be updated via socket event
   }
 
   const handleVoteSkip = () => {
@@ -521,7 +474,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
           >
             <div className="text-terminal-text text-sm font-mono flex-1 min-w-0">
               <div className="truncate">
-                {isMinimized ? `Shared Media Player ${isMuted ? '(Muted)' : ''}` : 'Shared Media Player'}
+                {isMinimized ? 'Shared Media Player' : 'Shared Media Player'}
                 {videoId && <span className="text-terminal-amber ml-1">● LIVE</span>}
                 {videoId && videoOwner && <span className="text-terminal-dim ml-1 hidden sm:inline">by {videoOwner}</span>}
               </div>
@@ -546,21 +499,6 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                 </button>
               )}
               
-              {/* Mute Button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleMuteToggle()
-                }}
-                className={`w-6 h-6 sm:w-4 sm:h-4 rounded-sm text-xs flex items-center justify-center ${
-                  isMuted 
-                    ? 'bg-red-600 hover:bg-red-500 text-white' 
-                    : 'bg-terminal-dim hover:bg-terminal-rust text-terminal-bg'
-                }`}
-                title={isMuted ? 'Unmute' : 'Mute'}
-              >
-                {isMuted ? 'M' : 'S'}
-              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
