@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import io, { Socket } from 'socket.io-client'
 import Oscilloscope from './components/Oscilloscope'
-// import MediaPlayerFixed from './components/MediaPlayerFixed'
+import MediaPlayerFixed from './components/MediaPlayerFixed'
 
 interface Message {
   id: string
@@ -309,7 +309,7 @@ export default function TerminalChat() {
       </div>
 
       {/* Floating Media Player */}
-      {/* <MediaPlayerFixed /> */}
+      <MediaPlayerFixed />
     </main>
   )
 }
