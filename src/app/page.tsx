@@ -24,6 +24,7 @@ export default function TerminalChat() {
   const [username, setUsername] = useState('')
   const [isConnected, setIsConnected] = useState(false)
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([])
+  const [userCount, setUserCount] = useState<number>(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -70,11 +71,16 @@ export default function TerminalChat() {
         setTypingUsers(prev => prev.filter(user => user.username !== data.username))
       })
 
+      socket.on('user_count', (count: number) => {
+        setUserCount(count)
+      })
+
       return () => {
         socket.off('message')
         socket.off('typing')
         socket.off('user_joined')
         socket.off('user_left')
+        socket.off('user_count')
       }
     }
   }, [socket, isConnected])
@@ -187,6 +193,16 @@ export default function TerminalChat() {
   return (
     <main className="h-screen bg-terminal-bg text-terminal-text font-mono flex flex-col overflow-hidden relative">
       <Oscilloscope typingData={typingUsers} currentTyping={currentMessage} />
+      
+      {/* User Count Dashboard - Top Right Corner */}
+      <div className="fixed top-4 right-4 z-30 bg-black/80 backdrop-blur-sm rounded-lg border border-terminal-rust/50 p-3">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-terminal-rust animate-pulse"></div>
+          <span className="text-terminal-rust text-sm font-mono">
+            {userCount} {userCount === 1 ? 'user' : 'users'}
+          </span>
+        </div>
+      </div>
       
       {/* Full screen chat with floating media player */}
       <div className="flex-1 p-6 overflow-hidden flex flex-col relative z-20">

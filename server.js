@@ -37,6 +37,10 @@ app.prepare().then(() => {
       // Notify others that a user joined
       socket.broadcast.emit('user_joined', { username })
       console.log(`User joined: ${username}`)
+      
+      // Emit updated user count to all clients
+      io.emit('user_count', connectedUsers.size)
+      console.log(`User count updated: ${connectedUsers.size}`)
     })
 
     socket.on('message', (message) => {
@@ -66,6 +70,10 @@ app.prepare().then(() => {
         connectedUsers.delete(socket.id)
         typingStates.delete(socket.id)
         console.log(`User left: ${user.username}`)
+        
+        // Emit updated user count to all clients
+        io.emit('user_count', connectedUsers.size)
+        console.log(`User count updated: ${connectedUsers.size}`)
       }
       console.log(`Client disconnected: ${socket.id}`)
     })
