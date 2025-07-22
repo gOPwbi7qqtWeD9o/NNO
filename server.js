@@ -47,14 +47,94 @@ app.prepare().then(() => {
   const skipVotes = new Set() // Track usernames who voted to skip
   let currentVideoUrl = '' // Track current video for vote validation
   
+  // Media queue system
+  const mediaQueue = [] // Queue for upcoming videos { videoId, url, queuedBy, timestamp }
+  
   // Media queue cooldown system
   const queueCooldowns = new Map() // Track when users last queued a video
-  const QUEUE_COOLDOWN_SECONDS = 30 // 30 second cooldown between queues
+  const QUEUE_COOLDOWN_SECONDS = 10 // 10 second cooldown between queues
   
   // Chat rate limiting system
   const messageCooldowns = new Map() // Track user message timestamps
-  const MESSAGE_RATE_LIMIT = 3 // Max messages per time window
+  const MESSAGE_RATE_LIMIT = 8 // Max messages per time window (much more reasonable)
   const RATE_LIMIT_WINDOW_SECONDS = 10 // Time window in seconds
+
+  // Function to play next song in queue
+  const playNextInQueue = () => {
+    if (mediaQueue.length === 0) {
+      // No songs in queue, clear player state
+      mediaPlayerState = {
+        videoId: '',
+        url: '',
+        isPlaying: false,
+        isMuted: false,
+        timestamp: 0,
+        lastUpdate: Date.now(),
+        queuedBy: ''
+      }
+      
+      skipVotes.clear()
+      currentVideoUrl = ''
+      
+      io.emit('media_stop')
+      io.emit('queue_update', {
+        queue: [],
+        currentlyPlaying: null
+      })
+      
+      console.log('📭 Queue empty, media player cleared')
+      return
+    }
+    
+    // Get next song from queue
+    const nextSong = mediaQueue.shift()
+    
+    mediaPlayerState = {
+      videoId: nextSong.videoId,
+      url: nextSong.url,
+      isPlaying: true,
+      isMuted: mediaPlayerState.isMuted,
+      timestamp: 0,
+      lastUpdate: Date.now(),
+      queuedBy: nextSong.queuedBy
+    }
+    
+    // Reset skip votes for new video
+    skipVotes.clear()
+    currentVideoUrl = nextSong.url
+    
+    // Broadcast new video
+    io.emit('media_play', mediaPlayerState)
+    io.emit('skip_votes_update', { 
+      votes: skipVotes.size, 
+      required: Math.ceil(connectedUsers.size / 2),
+      totalUsers: connectedUsers.size 
+    })
+    
+    // Update queue display
+    io.emit('queue_update', {
+      queue: mediaQueue.map(item => ({
+        videoId: item.videoId,
+        queuedBy: item.queuedBy,
+        title: item.url
+      })),
+      currentlyPlaying: {
+        videoId: mediaPlayerState.videoId,
+        queuedBy: mediaPlayerState.queuedBy
+      }
+    })
+    
+    // Send system message
+    const systemMessage = {
+      id: Date.now() + Math.random(),
+      username: 'System',
+      content: `Now playing: Queued by ${nextSong.queuedBy} | ${mediaQueue.length} songs remaining`,
+      timestamp: new Date()
+    }
+    io.emit('message', systemMessage)
+    
+    console.log(`🎵 Auto-playing next in queue: ${nextSong.url} by ${nextSong.queuedBy}`)
+  }
 
   io.on('connection', (socket) => {
     console.log(`Client connected: ${socket.id}`)
@@ -92,6 +172,16 @@ app.prepare().then(() => {
           totalUsers: connectedUsers.size 
         })
       }
+      
+      // Send current queue state
+      socket.emit('queue_update', {
+        queue: mediaQueue.map(item => ({
+          videoId: item.videoId,
+          queuedBy: item.queuedBy,
+          title: item.url // We can enhance this later with actual titles
+        })),
+        position: mediaQueue.length
+      })
     })
 
     socket.on('message', (message) => {
@@ -150,6 +240,8 @@ app.prepare().then(() => {
       const user = connectedUsers.get(socket.id)
       
       if (!user) return
+
+      console.log(`🎵 Media play request from ${username}: ${url}`)
       
       // Check if user is on cooldown
       const lastQueueTime = queueCooldowns.get(username)
@@ -174,37 +266,76 @@ app.prepare().then(() => {
       // Set cooldown for this user
       queueCooldowns.set(username, currentTime)
       
-      mediaPlayerState = {
-        videoId,
-        url,
-        isPlaying: true,
-        isMuted: mediaPlayerState.isMuted,
-        timestamp: timestamp || 0,
-        lastUpdate: Date.now(),
-        queuedBy: username // Set the owner of this video
+      // If no video is currently playing, start this one immediately
+      if (!mediaPlayerState.videoId || mediaPlayerState.videoId === '') {
+        mediaPlayerState = {
+          videoId,
+          url,
+          isPlaying: true,
+          isMuted: mediaPlayerState.isMuted,
+          timestamp: timestamp || 0,
+          lastUpdate: Date.now(),
+          queuedBy: username
+        }
+        
+        // Reset skip votes for new video
+        skipVotes.clear()
+        console.log(`🗳️ Skip votes cleared for new video, required votes: ${Math.ceil(connectedUsers.size / 2)}`)
+        currentVideoUrl = url
+        
+        // Broadcast to all clients
+        io.emit('media_play', mediaPlayerState)
+        io.emit('skip_votes_update', { 
+          votes: skipVotes.size, 
+          required: Math.ceil(connectedUsers.size / 2),
+          totalUsers: connectedUsers.size 
+        })
+        console.log(`Media play: ${url} by ${username}`)
+        
+        // Send system message about media play
+        const systemMessage = {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `${username} has initiated media broadcast on all channels`,
+          timestamp: new Date()
+        }
+        io.emit('message', systemMessage)
+        
+      } else {
+        // Add to queue if a video is already playing
+        const queueItem = {
+          videoId,
+          url,
+          queuedBy: username,
+          timestamp: Date.now()
+        }
+        
+        mediaQueue.push(queueItem)
+        
+        // Notify about queue addition
+        const queueMessage = {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `${username} has queued media for broadcast (Position ${mediaQueue.length} in queue)`,
+          timestamp: new Date()
+        }
+        io.emit('message', queueMessage)
+        
+        console.log(`🎵 ${username} queued: ${url} (Position ${mediaQueue.length})`)
       }
       
-      // Reset skip votes for new video
-      skipVotes.clear()
-      currentVideoUrl = url
-      
-      // Broadcast to all clients including sender for consistency
-      io.emit('media_play', mediaPlayerState)
-      io.emit('skip_votes_update', { 
-        votes: skipVotes.size, 
-        required: Math.ceil(connectedUsers.size / 2),
-        totalUsers: connectedUsers.size 
+      // Broadcast updated queue state
+      io.emit('queue_update', {
+        queue: mediaQueue.map(item => ({
+          videoId: item.videoId,
+          queuedBy: item.queuedBy,
+          title: item.url
+        })),
+        currentlyPlaying: mediaPlayerState.videoId ? {
+          videoId: mediaPlayerState.videoId,
+          queuedBy: mediaPlayerState.queuedBy
+        } : null
       })
-      console.log(`Media play: ${url} by ${username}`)
-      
-      // Send system message about media play
-      const systemMessage = {
-        id: Date.now() + Math.random(),
-        username: 'System',
-        content: `${username} has initiated media broadcast on all channels`,
-        timestamp: new Date()
-      }
-      io.emit('message', systemMessage)
     })
 
     socket.on('media_pause', (data) => {
@@ -244,36 +375,19 @@ app.prepare().then(() => {
         return
       }
       
-      mediaPlayerState = {
-        videoId: '',
-        url: '',
-        isPlaying: false,
-        isMuted: false,
-        timestamp: 0,
-        lastUpdate: Date.now(),
-        queuedBy: ''
-      }
-      
-      // Clear skip votes when video stops
-      skipVotes.clear()
-      currentVideoUrl = ''
-      
-      io.emit('media_stop')
-      io.emit('skip_votes_update', { 
-        votes: 0, 
-        required: Math.ceil(connectedUsers.size / 2),
-        totalUsers: connectedUsers.size 
-      })
-      console.log(`Media stopped by ${username || 'unknown user'}`)
-      
-      // Send system message about media stop
+      // Send system message about manual stop
       const systemMessage = {
         id: Date.now() + Math.random(),
         username: 'System',
-        content: `${username} has terminated media broadcast`,
+        content: `${username} has terminated current broadcast`,
         timestamp: new Date()
       }
       io.emit('message', systemMessage)
+      
+      console.log(`Media stopped manually by ${username}`)
+      
+      // Play next song in queue
+      playNextInQueue()
     })
 
     // Vote skip functionality
@@ -309,37 +423,57 @@ app.prepare().then(() => {
       
       // Check if we have enough votes to skip
       if (currentVotes >= requiredVotes) {
-        // Execute skip
-        mediaPlayerState = {
-          videoId: '',
-          url: '',
-          isPlaying: false,
-          isMuted: false,
-          timestamp: 0,
-          lastUpdate: Date.now(),
-          queuedBy: ''
-        }
-        
-        skipVotes.clear()
-        currentVideoUrl = ''
-        
-        io.emit('media_stop')
-        io.emit('skip_votes_update', { 
-          votes: 0, 
-          required: Math.ceil(connectedUsers.size / 2),
-          totalUsers: connectedUsers.size 
-        })
-        
         // Send skip success message
         const skipMessage = {
           id: Date.now() + Math.random(),
           username: 'System',
-          content: `Media broadcast terminated by collective decision`,
+          content: `Current broadcast terminated by collective decision`,
           timestamp: new Date()
         }
         io.emit('message', skipMessage)
         
         console.log(`Video skipped by vote: ${currentVotes}/${requiredVotes}`)
+        
+        // Play next song in queue
+        playNextInQueue()
+      }
+    })
+
+    // Handle video end (when YouTube video finishes naturally)
+    socket.on('media_ended', (data) => {
+      const { username } = data
+      const user = connectedUsers.get(socket.id)
+      
+      if (!user || !mediaPlayerState.videoId) return
+      
+      console.log(`🎵 Video ended naturally, playing next in queue`)
+      
+      // Play next song in queue
+      playNextInQueue()
+    })
+
+    // Queue management commands
+    socket.on('queue_command', (data) => {
+      const { command, username } = data
+      const user = connectedUsers.get(socket.id)
+      
+      if (!user) return
+      
+      if (command === 'list') {
+        // Send queue list to requesting user
+        const queueList = mediaQueue.map((item, index) => 
+          `${index + 1}. ${item.queuedBy} - ${item.url}`
+        ).join('\n')
+        
+        const queueMessage = {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: mediaQueue.length > 0 
+            ? `Queue (${mediaQueue.length} songs):\n${queueList}` 
+            : 'Queue is empty',
+          timestamp: new Date()
+        }
+        socket.emit('message', queueMessage)
       }
     })
 

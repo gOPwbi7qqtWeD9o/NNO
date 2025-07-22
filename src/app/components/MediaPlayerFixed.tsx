@@ -7,6 +7,17 @@ interface MediaPlayerProps {
   onVolumeChange?: (volume: number) => void
 }
 
+interface QueueItem {
+  videoId: string
+  queuedBy: string
+  title: string
+}
+
+interface CurrentlyPlaying {
+  videoId: string
+  queuedBy: string
+}
+
 const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeChange }) => {
   const [isClient, setIsClient] = useState(false)
   const [url, setUrl] = useState('')
@@ -21,6 +32,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
   const [hasVoted, setHasVoted] = useState(false)
   const [videoOwner, setVideoOwner] = useState('')
   const [cooldownRemaining, setCooldownRemaining] = useState(0)
+  const [queueList, setQueueList] = useState<QueueItem[]>([])
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<CurrentlyPlaying | null>(null)
   const windowRef = useRef<HTMLDivElement>(null)
 
   // Ensure this only runs on the client
@@ -43,7 +56,6 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
         setUrl(state.url)
         setIsMuted(state.isMuted)
         setVideoOwner(state.queuedBy || '')
-        setIsMinimized(false)
         setHasError(false)
       }
     })
@@ -54,7 +66,6 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setUrl(state.url)
       setIsMuted(state.isMuted)
       setVideoOwner(state.queuedBy || '')
-      setIsMinimized(false)
       setHasError(false)
       setHasVoted(false) // Reset vote status for new video
     })
@@ -85,6 +96,12 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setSkipVotes(voteData)
     })
 
+    // Listen for queue updates
+    socket.on('queue_update', (queueData) => {
+      setQueueList(queueData.queue || [])
+      setCurrentlyPlaying(queueData.currentlyPlaying)
+    })
+
     // Listen for system messages to detect cooldown errors
     socket.on('message', (message) => {
       if (message.username === 'System' && message.content.includes('Queue cooldown active')) {
@@ -104,6 +121,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       socket.off('media_mute')
       socket.off('media_stop')
       socket.off('skip_votes_update')
+      socket.off('queue_update')
       socket.off('message')
     }
   }, [socket])
@@ -171,8 +189,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     
     const extractedVideoId = extractYouTubeUrl(url)
     if (extractedVideoId) {
-      // Start a 30-second cooldown
-      setCooldownRemaining(30)
+      // Start a 10-second cooldown
+      setCooldownRemaining(10)
       
       // Emit to server for synchronization across all users
       if (socket) {
@@ -390,6 +408,28 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                       Queued by: {videoOwner} {videoOwner === username && '(You can close manually)'}
                     </div>
                   )}
+                </div>
+              )}
+              
+              {/* Queue Display - Show when there are queued songs */}
+              {queueList.length > 0 && (
+                <div className="mt-2 text-xs text-terminal-dim">
+                  <div className="text-terminal-text font-mono">Queue ({queueList.length}):</div>
+                  <div className="mt-1 space-y-1 max-h-20 overflow-y-auto">
+                    {queueList.slice(0, 3).map((item, index) => (
+                      <div key={index} className="flex justify-between">
+                        <span>{index + 1}. {item.queuedBy}</span>
+                        <span className="text-terminal-rust text-xs truncate ml-2 max-w-32">
+                          {item.title.length > 30 ? item.title.substring(0, 30) + '...' : item.title}
+                        </span>
+                      </div>
+                    ))}
+                    {queueList.length > 3 && (
+                      <div className="text-terminal-amber text-xs">
+                        +{queueList.length - 3} more songs...
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
