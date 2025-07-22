@@ -19,6 +19,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
   const [hasError, setHasError] = useState(false)
   const [skipVotes, setSkipVotes] = useState({ votes: 0, required: 1, totalUsers: 1 })
   const [hasVoted, setHasVoted] = useState(false)
+  const [videoOwner, setVideoOwner] = useState('')
+  const [cooldownRemaining, setCooldownRemaining] = useState(0)
   const windowRef = useRef<HTMLDivElement>(null)
 
   // Ensure this only runs on the client
@@ -40,6 +42,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
         setVideoId(state.videoId)
         setUrl(state.url)
         setIsMuted(state.isMuted)
+        setVideoOwner(state.queuedBy || '')
         setIsMinimized(false)
         setHasError(false)
       }
@@ -50,6 +53,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setVideoId(state.videoId)
       setUrl(state.url)
       setIsMuted(state.isMuted)
+      setVideoOwner(state.queuedBy || '')
       setIsMinimized(false)
       setHasError(false)
       setHasVoted(false) // Reset vote status for new video
@@ -73,11 +77,23 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setIsMuted(false)
       setHasError(false)
       setHasVoted(false) // Reset vote status when video stops
+      setVideoOwner('') // Clear video owner
     })
 
     // Listen for skip vote updates
     socket.on('skip_votes_update', (voteData) => {
       setSkipVotes(voteData)
+    })
+
+    // Listen for system messages to detect cooldown errors
+    socket.on('message', (message) => {
+      if (message.username === 'System' && message.content.includes('Queue cooldown active')) {
+        // Extract remaining time from message and update local cooldown
+        const timeMatch = message.content.match(/Wait (\d+) more seconds/)
+        if (timeMatch) {
+          setCooldownRemaining(parseInt(timeMatch[1]))
+        }
+      }
     })
 
     // Cleanup listeners
@@ -88,8 +104,25 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       socket.off('media_mute')
       socket.off('media_stop')
       socket.off('skip_votes_update')
+      socket.off('message')
     }
   }, [socket])
+
+  // Cooldown timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (cooldownRemaining > 0) {
+      interval = setInterval(() => {
+        setCooldownRemaining(prev => {
+          const newValue = prev - 1
+          return newValue <= 0 ? 0 : newValue
+        })
+      }, 1000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [cooldownRemaining])
 
   // Extract YouTube video ID and create embed URL
   const extractYouTubeUrl = (inputUrl: string): string => {
@@ -130,8 +163,17 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     e.preventDefault()
     if (!url.trim()) return
     
+    // Check for client-side cooldown
+    if (cooldownRemaining > 0) {
+      alert(`Please wait ${cooldownRemaining} more seconds before queuing another video.`)
+      return
+    }
+    
     const extractedVideoId = extractYouTubeUrl(url)
     if (extractedVideoId) {
+      // Start a 30-second cooldown
+      setCooldownRemaining(30)
+      
       // Emit to server for synchronization across all users
       if (socket) {
         socket.emit('media_play', {
@@ -243,6 +285,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
             <div className="text-terminal-text text-sm font-mono">
               {isMinimized ? `Shared Media Player ${isMuted ? '(Muted)' : ''}` : 'Shared Media Player'}
               {videoId && <span className="text-terminal-amber ml-1">● LIVE</span>}
+              {videoId && videoOwner && <span className="text-terminal-dim ml-1">by {videoOwner}</span>}
             </div>
             <div className="flex gap-2">
               {/* Vote Skip Button - Only show when video is playing */}
@@ -290,17 +333,21 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
               >
                 {isMinimized ? '□' : '-'}
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  e.preventDefault()
-                  handleClose()
-                }}
-                className="w-4 h-4 bg-red-700 hover:bg-red-600 rounded-sm text-xs text-white flex items-center justify-center"
-                title="Close"
-              >
-                &times;
-              </button>
+              
+              {/* Close Button - Only show to video owner */}
+              {(!videoId || videoOwner === username) && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    handleClose()
+                  }}
+                  className="w-4 h-4 bg-red-700 hover:bg-red-600 rounded-sm text-xs text-white flex items-center justify-center"
+                  title="Close"
+                >
+                  &times;
+                </button>
+              )}
             </div>
           </div>
 
@@ -317,20 +364,32 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                 />
                 <button
                   type="submit"
-                  className="bg-terminal-rust/80 hover:bg-terminal-rust text-terminal-bg px-3 py-1 rounded text-sm font-mono transition-colors"
+                  disabled={cooldownRemaining > 0}
+                  className={`px-3 py-1 rounded text-sm font-mono transition-colors ${
+                    cooldownRemaining > 0 
+                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      : 'bg-terminal-rust/80 hover:bg-terminal-rust text-terminal-bg'
+                  }`}
                 >
-                  Play
+                  {cooldownRemaining > 0 ? `Wait ${cooldownRemaining}s` : 'Play'}
                 </button>
               </form>
               
               {/* Skip Votes Indicator - Show when video is playing */}
               {videoId && (
-                <div className="mt-2 text-xs text-terminal-dim flex items-center justify-between">
-                  <span>Skip votes: {skipVotes.votes}/{skipVotes.required}</span>
-                  <span className="text-terminal-amber">
-                    {skipVotes.votes >= skipVotes.required ? 'TERMINATING...' : 
-                     hasVoted ? 'REQUEST FILED' : 'Click SKIP to file request'}
-                  </span>
+                <div className="mt-2 text-xs text-terminal-dim space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span>Skip votes: {skipVotes.votes}/{skipVotes.required}</span>
+                    <span className="text-terminal-amber">
+                      {skipVotes.votes >= skipVotes.required ? 'TERMINATING...' : 
+                       hasVoted ? 'REQUEST FILED' : 'Click SKIP to file request'}
+                    </span>
+                  </div>
+                  {videoOwner && (
+                    <div className="text-terminal-rust text-xs">
+                      Queued by: {videoOwner} {videoOwner === username && '(You can close manually)'}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

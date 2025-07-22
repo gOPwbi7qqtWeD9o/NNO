@@ -39,12 +39,22 @@ app.prepare().then(() => {
     isPlaying: false,
     isMuted: false,
     timestamp: 0,
-    lastUpdate: Date.now()
+    lastUpdate: Date.now(),
+    queuedBy: '' // Track who queued the current video
   }
   
   // Vote skip state
   const skipVotes = new Set() // Track usernames who voted to skip
   let currentVideoUrl = '' // Track current video for vote validation
+  
+  // Media queue cooldown system
+  const queueCooldowns = new Map() // Track when users last queued a video
+  const QUEUE_COOLDOWN_SECONDS = 30 // 30 second cooldown between queues
+  
+  // Chat rate limiting system
+  const messageCooldowns = new Map() // Track user message timestamps
+  const MESSAGE_RATE_LIMIT = 3 // Max messages per time window
+  const RATE_LIMIT_WINDOW_SECONDS = 10 // Time window in seconds
 
   io.on('connection', (socket) => {
     console.log(`Client connected: ${socket.id}`)
@@ -85,6 +95,37 @@ app.prepare().then(() => {
     })
 
     socket.on('message', (message) => {
+      const user = connectedUsers.get(socket.id)
+      if (!user) return
+      
+      const username = user.username
+      const currentTime = Date.now()
+      
+      // Check rate limit
+      if (!messageCooldowns.has(username)) {
+        messageCooldowns.set(username, [])
+      }
+      
+      const userMessages = messageCooldowns.get(username)
+      // Remove messages older than the rate limit window
+      const windowStart = currentTime - (RATE_LIMIT_WINDOW_SECONDS * 1000)
+      const recentMessages = userMessages.filter(timestamp => timestamp > windowStart)
+      
+      if (recentMessages.length >= MESSAGE_RATE_LIMIT) {
+        // User is rate limited
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `Rate limit exceeded. Maximum ${MESSAGE_RATE_LIMIT} messages per ${RATE_LIMIT_WINDOW_SECONDS} seconds.`,
+          timestamp: new Date()
+        })
+        return
+      }
+      
+      // Add current message timestamp and update the map
+      recentMessages.push(currentTime)
+      messageCooldowns.set(username, recentMessages)
+      
       console.log('Message received:', message)
       // Broadcast the message to all connected clients
       io.emit('message', message)
@@ -106,13 +147,41 @@ app.prepare().then(() => {
     // Media player synchronization events
     socket.on('media_play', (data) => {
       const { videoId, url, timestamp, username } = data
+      const user = connectedUsers.get(socket.id)
+      
+      if (!user) return
+      
+      // Check if user is on cooldown
+      const lastQueueTime = queueCooldowns.get(username)
+      const currentTime = Date.now()
+      
+      if (lastQueueTime) {
+        const timeSinceLastQueue = (currentTime - lastQueueTime) / 1000
+        const remainingCooldown = QUEUE_COOLDOWN_SECONDS - timeSinceLastQueue
+        
+        if (remainingCooldown > 0) {
+          // User is on cooldown, send error message
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: `Queue cooldown active. Wait ${Math.ceil(remainingCooldown)} more seconds before initiating another broadcast.`,
+            timestamp: new Date()
+          })
+          return
+        }
+      }
+      
+      // Set cooldown for this user
+      queueCooldowns.set(username, currentTime)
+      
       mediaPlayerState = {
         videoId,
         url,
         isPlaying: true,
         isMuted: mediaPlayerState.isMuted,
         timestamp: timestamp || 0,
-        lastUpdate: Date.now()
+        lastUpdate: Date.now(),
+        queuedBy: username // Set the owner of this video
       }
       
       // Reset skip votes for new video
@@ -159,13 +228,30 @@ app.prepare().then(() => {
 
     socket.on('media_stop', (data) => {
       const { username } = data
+      const user = connectedUsers.get(socket.id)
+      
+      // Only allow the person who queued the video to stop it manually
+      if (!user || !mediaPlayerState.videoId) return
+      
+      if (mediaPlayerState.queuedBy !== username) {
+        // Send error message to the user trying to stop
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `Access denied. Only ${mediaPlayerState.queuedBy} can terminate this broadcast.`,
+          timestamp: new Date()
+        })
+        return
+      }
+      
       mediaPlayerState = {
         videoId: '',
         url: '',
         isPlaying: false,
         isMuted: false,
         timestamp: 0,
-        lastUpdate: Date.now()
+        lastUpdate: Date.now(),
+        queuedBy: ''
       }
       
       // Clear skip votes when video stops
@@ -230,7 +316,8 @@ app.prepare().then(() => {
           isPlaying: false,
           isMuted: false,
           timestamp: 0,
-          lastUpdate: Date.now()
+          lastUpdate: Date.now(),
+          queuedBy: ''
         }
         
         skipVotes.clear()
@@ -272,6 +359,12 @@ app.prepare().then(() => {
           
           // Remove their skip vote if they had one
           skipVotes.delete(user.username)
+          
+          // Clean up their queue cooldown
+          queueCooldowns.delete(user.username)
+          
+          // Clean up their message rate limit history
+          messageCooldowns.delete(user.username)
           
           // Emit updated user count and skip votes to all clients
           io.emit('user_count', connectedUsers.size)
