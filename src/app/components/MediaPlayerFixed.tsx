@@ -1,10 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { Socket } from 'socket.io-client'
 
 interface MediaPlayerProps {
+  socket: Socket | null
+  username: string
   onVolumeChange?: (volume: number) => void
 }
 
-const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
+const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeChange }) => {
   const [isClient, setIsClient] = useState(false)
   const [url, setUrl] = useState('')
   const [isMinimized, setIsMinimized] = useState(false)
@@ -14,6 +17,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [videoId, setVideoId] = useState('')
   const [hasError, setHasError] = useState(false)
+  const [skipVotes, setSkipVotes] = useState({ votes: 0, required: 1, totalUsers: 1 })
+  const [hasVoted, setHasVoted] = useState(false)
   const windowRef = useRef<HTMLDivElement>(null)
 
   // Ensure this only runs on the client
@@ -24,6 +29,67 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
       setPosition({ x: window.innerWidth - 450, y: 100 })
     }
   }, [])
+
+  // Socket event handlers for media synchronization
+  useEffect(() => {
+    if (!socket) return
+
+    // Listen for media state sync when joining
+    socket.on('media_state_sync', (state) => {
+      if (state.videoId) {
+        setVideoId(state.videoId)
+        setUrl(state.url)
+        setIsMuted(state.isMuted)
+        setIsMinimized(false)
+        setHasError(false)
+      }
+    })
+
+    // Listen for media play events from other users
+    socket.on('media_play', (state) => {
+      setVideoId(state.videoId)
+      setUrl(state.url)
+      setIsMuted(state.isMuted)
+      setIsMinimized(false)
+      setHasError(false)
+      setHasVoted(false) // Reset vote status for new video
+    })
+
+    // Listen for media pause events
+    socket.on('media_pause', (state) => {
+      // Note: We can't actually control YouTube iframe playback state
+      // But we can show visual indicators or sync state
+    })
+
+    // Listen for media mute events
+    socket.on('media_mute', ({ isMuted: newMutedState }) => {
+      setIsMuted(newMutedState)
+    })
+
+    // Listen for media stop events
+    socket.on('media_stop', () => {
+      setVideoId('')
+      setUrl('')
+      setIsMuted(false)
+      setHasError(false)
+      setHasVoted(false) // Reset vote status when video stops
+    })
+
+    // Listen for skip vote updates
+    socket.on('skip_votes_update', (voteData) => {
+      setSkipVotes(voteData)
+    })
+
+    // Cleanup listeners
+    return () => {
+      socket.off('media_state_sync')
+      socket.off('media_play')
+      socket.off('media_pause')
+      socket.off('media_mute')
+      socket.off('media_stop')
+      socket.off('skip_votes_update')
+    }
+  }, [socket])
 
   // Extract YouTube video ID and create embed URL
   const extractYouTubeUrl = (inputUrl: string): string => {
@@ -66,19 +132,27 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
     
     const extractedVideoId = extractYouTubeUrl(url)
     if (extractedVideoId) {
-      setVideoId(extractedVideoId)
-      setIsMinimized(false)
-      setHasError(false) // Reset error state
+      // Emit to server for synchronization across all users
+      if (socket) {
+        socket.emit('media_play', {
+          videoId: extractedVideoId,
+          url: url,
+          timestamp: 0,
+          username: username
+        })
+      }
+      // Local state will be updated via socket event
     } else {
       alert('Please enter a valid YouTube URL')
     }
   }
 
   const handleClose = () => {
-    setVideoId('')
-    setUrl('')
-    setIsMuted(false)
-    setHasError(false)
+    // Emit stop event to all users
+    if (socket) {
+      socket.emit('media_stop', { username: username })
+    }
+    // Local state will be updated via socket event
   }
 
   const handleMinimize = () => {
@@ -86,7 +160,22 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
   }
 
   const handleMuteToggle = () => {
-    setIsMuted(!isMuted)
+    const newMutedState = !isMuted
+    // Emit mute state to all users
+    if (socket) {
+      socket.emit('media_mute', { 
+        isMuted: newMutedState,
+        username: username 
+      })
+    }
+    // Local state will be updated via socket event
+  }
+
+  const handleVoteSkip = () => {
+    if (!hasVoted && videoId && socket) {
+      socket.emit('vote_skip', { username })
+      setHasVoted(true)
+    }
   }
 
   // Dragging functionality - only works on client
@@ -152,9 +241,29 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
             }}
           >
             <div className="text-terminal-text text-sm font-mono">
-              {isMinimized ? `Media Player ${isMuted ? '(Muted)' : ''}` : 'Media Player'}
+              {isMinimized ? `Shared Media Player ${isMuted ? '(Muted)' : ''}` : 'Shared Media Player'}
+              {videoId && <span className="text-terminal-amber ml-1">● LIVE</span>}
             </div>
             <div className="flex gap-2">
+              {/* Vote Skip Button - Only show when video is playing */}
+              {videoId && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleVoteSkip()
+                  }}
+                  disabled={hasVoted}
+                  className={`px-2 h-4 rounded-sm text-xs flex items-center justify-center transition-colors ${
+                    hasVoted 
+                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
+                      : 'bg-orange-700 hover:bg-orange-600 text-white'
+                  }`}
+                  title={hasVoted ? 'Already voted' : `Vote to skip (${skipVotes.votes}/${skipVotes.required})`}
+                >
+                  {hasVoted ? '✓' : 'SKIP'}
+                </button>
+              )}
+              
               {/* Mute Button */}
               <button
                 onClick={(e) => {
@@ -213,6 +322,17 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
                   Play
                 </button>
               </form>
+              
+              {/* Skip Votes Indicator - Show when video is playing */}
+              {videoId && (
+                <div className="mt-2 text-xs text-terminal-dim flex items-center justify-between">
+                  <span>Skip votes: {skipVotes.votes}/{skipVotes.required}</span>
+                  <span className="text-terminal-amber">
+                    {skipVotes.votes >= skipVotes.required ? 'TERMINATING...' : 
+                     hasVoted ? 'REQUEST FILED' : 'Click SKIP to file request'}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

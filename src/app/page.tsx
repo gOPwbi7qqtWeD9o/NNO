@@ -309,7 +309,7 @@ export default function TerminalChat() {
       </div>
 
       {/* Floating Media Player */}
-      <MediaPlayerFixed />
+      <MediaPlayerFixed socket={socket} username={username} />
     </main>
   )
 }

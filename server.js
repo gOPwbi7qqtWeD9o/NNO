@@ -31,6 +31,20 @@ app.prepare().then(() => {
   const connectedUsers = new Map()
   const typingStates = new Map()
   const disconnectionTimeouts = new Map() // Grace period for reconnections
+  
+  // Shared media player state
+  let mediaPlayerState = {
+    videoId: '',
+    url: '',
+    isPlaying: false,
+    isMuted: false,
+    timestamp: 0,
+    lastUpdate: Date.now()
+  }
+  
+  // Vote skip state
+  const skipVotes = new Set() // Track usernames who voted to skip
+  let currentVideoUrl = '' // Track current video for vote validation
 
   io.on('connection', (socket) => {
     console.log(`Client connected: ${socket.id}`)
@@ -56,6 +70,18 @@ app.prepare().then(() => {
       // Emit updated user count to all clients
       io.emit('user_count', connectedUsers.size)
       console.log(`User count updated: ${connectedUsers.size}`)
+      
+      // Send current media player state to the newly joined user
+      socket.emit('media_state_sync', mediaPlayerState)
+      
+      // Send current skip votes if there's a video playing
+      if (mediaPlayerState.videoId) {
+        socket.emit('skip_votes_update', { 
+          votes: skipVotes.size, 
+          required: Math.ceil(connectedUsers.size / 2),
+          totalUsers: connectedUsers.size 
+        })
+      }
     })
 
     socket.on('message', (message) => {
@@ -77,6 +103,159 @@ app.prepare().then(() => {
       socket.broadcast.emit('typing', { username, content })
     })
 
+    // Media player synchronization events
+    socket.on('media_play', (data) => {
+      const { videoId, url, timestamp, username } = data
+      mediaPlayerState = {
+        videoId,
+        url,
+        isPlaying: true,
+        isMuted: mediaPlayerState.isMuted,
+        timestamp: timestamp || 0,
+        lastUpdate: Date.now()
+      }
+      
+      // Reset skip votes for new video
+      skipVotes.clear()
+      currentVideoUrl = url
+      
+      // Broadcast to all clients including sender for consistency
+      io.emit('media_play', mediaPlayerState)
+      io.emit('skip_votes_update', { 
+        votes: skipVotes.size, 
+        required: Math.ceil(connectedUsers.size / 2),
+        totalUsers: connectedUsers.size 
+      })
+      console.log(`Media play: ${url} by ${username}`)
+      
+      // Send system message about media play
+      const systemMessage = {
+        id: Date.now() + Math.random(),
+        username: 'System',
+        content: `${username} has initiated media broadcast on all channels`,
+        timestamp: new Date()
+      }
+      io.emit('message', systemMessage)
+    })
+
+    socket.on('media_pause', (data) => {
+      const { timestamp, username } = data
+      mediaPlayerState.isPlaying = false
+      mediaPlayerState.timestamp = timestamp || mediaPlayerState.timestamp
+      mediaPlayerState.lastUpdate = Date.now()
+      
+      io.emit('media_pause', mediaPlayerState)
+      console.log(`Media paused by ${username || 'unknown user'}`)
+    })
+
+    socket.on('media_mute', (data) => {
+      const { isMuted, username } = data
+      mediaPlayerState.isMuted = isMuted
+      mediaPlayerState.lastUpdate = Date.now()
+      
+      io.emit('media_mute', { isMuted })
+      console.log(`Media ${isMuted ? 'muted' : 'unmuted'} by ${username || 'unknown user'}`)
+    })
+
+    socket.on('media_stop', (data) => {
+      const { username } = data
+      mediaPlayerState = {
+        videoId: '',
+        url: '',
+        isPlaying: false,
+        isMuted: false,
+        timestamp: 0,
+        lastUpdate: Date.now()
+      }
+      
+      // Clear skip votes when video stops
+      skipVotes.clear()
+      currentVideoUrl = ''
+      
+      io.emit('media_stop')
+      io.emit('skip_votes_update', { 
+        votes: 0, 
+        required: Math.ceil(connectedUsers.size / 2),
+        totalUsers: connectedUsers.size 
+      })
+      console.log(`Media stopped by ${username || 'unknown user'}`)
+      
+      // Send system message about media stop
+      const systemMessage = {
+        id: Date.now() + Math.random(),
+        username: 'System',
+        content: `${username} has terminated media broadcast`,
+        timestamp: new Date()
+      }
+      io.emit('message', systemMessage)
+    })
+
+    // Vote skip functionality
+    socket.on('vote_skip', (data) => {
+      const { username } = data
+      const user = connectedUsers.get(socket.id)
+      
+      if (!user || !mediaPlayerState.videoId) return
+      
+      // Add vote (Set automatically handles duplicates)
+      skipVotes.add(username)
+      
+      const requiredVotes = Math.ceil(connectedUsers.size / 2)
+      const currentVotes = skipVotes.size
+      
+      console.log(`Skip vote from ${username}: ${currentVotes}/${requiredVotes}`)
+      
+      // Broadcast vote update
+      io.emit('skip_votes_update', { 
+        votes: currentVotes, 
+        required: requiredVotes,
+        totalUsers: connectedUsers.size 
+      })
+      
+      // Send system message about the vote
+      const systemMessage = {
+        id: Date.now() + Math.random(),
+        username: 'System',
+        content: `${username} has filed skip request (${currentVotes}/${requiredVotes})`,
+        timestamp: new Date()
+      }
+      io.emit('message', systemMessage)
+      
+      // Check if we have enough votes to skip
+      if (currentVotes >= requiredVotes) {
+        // Execute skip
+        mediaPlayerState = {
+          videoId: '',
+          url: '',
+          isPlaying: false,
+          isMuted: false,
+          timestamp: 0,
+          lastUpdate: Date.now()
+        }
+        
+        skipVotes.clear()
+        currentVideoUrl = ''
+        
+        io.emit('media_stop')
+        io.emit('skip_votes_update', { 
+          votes: 0, 
+          required: Math.ceil(connectedUsers.size / 2),
+          totalUsers: connectedUsers.size 
+        })
+        
+        // Send skip success message
+        const skipMessage = {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `Media broadcast terminated by collective decision`,
+          timestamp: new Date()
+        }
+        io.emit('message', skipMessage)
+        
+        console.log(`Video skipped by vote: ${currentVotes}/${requiredVotes}`)
+      }
+    })
+
     socket.on('disconnect', () => {
       const user = connectedUsers.get(socket.id)
       if (user) {
@@ -91,8 +270,18 @@ app.prepare().then(() => {
           console.log(`User left: ${user.username}`)
           disconnectionTimeouts.delete(user.username)
           
-          // Emit updated user count to all clients
+          // Remove their skip vote if they had one
+          skipVotes.delete(user.username)
+          
+          // Emit updated user count and skip votes to all clients
           io.emit('user_count', connectedUsers.size)
+          if (mediaPlayerState.videoId) {
+            io.emit('skip_votes_update', { 
+              votes: skipVotes.size, 
+              required: Math.ceil(connectedUsers.size / 2),
+              totalUsers: connectedUsers.size 
+            })
+          }
           console.log(`User count updated: ${connectedUsers.size}`)
         }, 5000)
         
