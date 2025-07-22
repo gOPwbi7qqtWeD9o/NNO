@@ -30,7 +30,7 @@ body {
 body {
   color: #cc9966;
   background: #0a0a0a;
-  /* Post-apocalyptic terminal styling */
+  /* Post-apocalyptic terminal styling - forced refresh */
 }
 
 body::before {

@@ -5,6 +5,7 @@ interface MediaPlayerProps {
 }
 
 const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
+  const [isClient, setIsClient] = useState(false)
   const [url, setUrl] = useState('')
   const [isVisible, setIsVisible] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
@@ -14,8 +15,9 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
   const [embedUrl, setEmbedUrl] = useState('')
   const windowRef = useRef<HTMLDivElement>(null)
 
-  // Initialize position after component mounts
+  // Ensure this only runs on the client
   useEffect(() => {
+    setIsClient(true)
     if (typeof window !== 'undefined') {
       setPosition({ x: window.innerWidth - 400, y: 20 })
     }
@@ -61,9 +63,9 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
     setIsMinimized(!isMinimized)
   }
 
-  // Dragging functionality
+  // Dragging functionality - only works on client
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (!windowRef.current) return
+    if (!isClient || !windowRef.current) return
     
     setIsDragging(true)
     const rect = windowRef.current.getBoundingClientRect()
@@ -74,7 +76,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
   }
 
   const handleMouseMove = (e: MouseEvent) => {
-    if (!isDragging || typeof window === 'undefined') return
+    if (!isDragging || !isClient || typeof window === 'undefined') return
     
     setPosition({
       x: Math.max(0, Math.min(window.innerWidth - 400, e.clientX - dragOffset.x)),
@@ -87,6 +89,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
   }
 
   useEffect(() => {
+    if (!isClient) return
+    
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
@@ -96,7 +100,12 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, dragOffset])
+  }, [isDragging, dragOffset, isClient])
+
+  // Don't render anything until we're on the client
+  if (!isClient) {
+    return null
+  }
 
   return (
     <>
@@ -108,13 +117,13 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="Paste YouTube URL..."
-            className="bg-transparent border border-terminal-dark text-terminal-text text-sm px-2 py-1 rounded w-64 focus:outline-none focus:border-terminal-rust"
+            className="bg-terminal-bg border border-terminal-rust/30 rounded px-3 py-1 text-terminal-text text-sm focus:border-terminal-rust focus:outline-none font-mono"
           />
           <button
             type="submit"
-            className="bg-terminal-rust text-black px-3 py-1 rounded text-sm font-mono hover:bg-terminal-amber transition-colors"
+            className="bg-terminal-rust/80 hover:bg-terminal-rust text-terminal-bg px-3 py-1 rounded text-sm font-mono transition-colors"
           >
-            Load
+            Play
           </button>
         </form>
       </div>
@@ -123,50 +132,46 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ onVolumeChange }) => {
       {isVisible && (
         <div
           ref={windowRef}
-          className="fixed z-50 bg-black/90 backdrop-blur-sm border border-terminal-rust/50 rounded-lg shadow-2xl"
+          className="fixed z-50 bg-terminal-bg/95 border border-terminal-rust/50 rounded-lg shadow-2xl backdrop-blur-sm"
           style={{
-            left: position.x,
-            top: position.y,
-            width: isMinimized ? '200px' : '400px',
-            height: isMinimized ? '40px' : '300px'
+            left: `${position.x}px`,
+            top: `${position.y}px`,
+            width: '400px',
+            height: isMinimized ? '40px' : '300px',
           }}
         >
-          {/* Title Bar */}
+          {/* Window Controls */}
           <div
-            className="flex items-center justify-between p-2 bg-terminal-dark/50 rounded-t-lg border-b border-terminal-rust/30 cursor-move"
+            className="flex items-center justify-between p-2 bg-terminal-rust/20 border-b border-terminal-rust/30 cursor-move"
             onMouseDown={handleMouseDown}
           >
-            <span className="text-terminal-rust text-sm font-mono">Media Player</span>
-            <div className="flex items-center gap-1">
+            <div className="text-terminal-text text-sm font-mono">Media Player</div>
+            <div className="flex gap-2">
               <button
                 onClick={handleMinimize}
-                className="w-6 h-6 rounded bg-terminal-amber/20 hover:bg-terminal-amber/40 transition-colors flex items-center justify-center"
+                className="w-4 h-4 bg-terminal-dim hover:bg-terminal-rust rounded-sm text-xs text-terminal-bg flex items-center justify-center"
               >
-                <span className="text-terminal-amber text-xs">
-                  {isMinimized ? '□' : '_'}
-                </span>
+                {isMinimized ? '□' : '_'}
               </button>
               <button
                 onClick={handleClose}
-                className="w-6 h-6 rounded bg-red-500/20 hover:bg-red-500/40 transition-colors flex items-center justify-center"
+                className="w-4 h-4 bg-red-700 hover:bg-red-600 rounded-sm text-xs text-white flex items-center justify-center"
               >
-                <span className="text-red-400 text-xs">×</span>
+                ×
               </button>
             </div>
           </div>
 
           {/* Video Content */}
           {!isMinimized && embedUrl && (
-            <div className="p-2 h-full">
+            <div className="p-0 h-full">
               <iframe
                 src={embedUrl}
-                width="100%"
-                height="240"
+                className="w-full h-full rounded-b-lg"
                 frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
-                className="rounded"
-              ></iframe>
+              />
             </div>
           )}
         </div>
