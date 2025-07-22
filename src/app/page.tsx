@@ -15,6 +15,7 @@ interface Message {
 interface TypingUser {
   username: string
   content: string
+  position?: number
 }
 
 export default function TerminalChat() {
@@ -25,6 +26,8 @@ export default function TerminalChat() {
   const [isConnected, setIsConnected] = useState(false)
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([])
   const [userCount, setUserCount] = useState<number>(0)
+  const [userPositions, setUserPositions] = useState<Map<string, number>>(new Map())
+  const [nextPosition, setNextPosition] = useState<number>(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -46,7 +49,30 @@ export default function TerminalChat() {
         setTypingUsers(prev => {
           const filtered = prev.filter(user => user.username !== data.username)
           if (data.content) {
-            return [...filtered, { username: data.username, content: data.content }]
+            // Check if user already has a position
+            let userPosition = userPositions.get(data.username)
+            if (userPosition === undefined) {
+              userPosition = nextPosition
+              setUserPositions(positions => {
+                const newPositions = new Map(positions)
+                newPositions.set(data.username, userPosition!)
+                return newPositions
+              })
+              setNextPosition(pos => pos + 1)
+            }
+            
+            return [...filtered, { 
+              username: data.username, 
+              content: data.content,
+              position: userPosition
+            }]
+          } else {
+            // User stopped typing, remove their position
+            setUserPositions(positions => {
+              const newPositions = new Map(positions)
+              newPositions.delete(data.username)
+              return newPositions
+            })
           }
           return filtered
         })
@@ -69,6 +95,12 @@ export default function TerminalChat() {
           timestamp: new Date()
         }])
         setTypingUsers(prev => prev.filter(user => user.username !== data.username))
+        // Clean up user position when they leave
+        setUserPositions(positions => {
+          const newPositions = new Map(positions)
+          newPositions.delete(data.username)
+          return newPositions
+        })
       })
 
       socket.on('user_count', (count: number) => {
@@ -227,7 +259,9 @@ export default function TerminalChat() {
             </div>
           ))}
           
-          {typingUsers.map((user) => (
+          {typingUsers
+            .sort((a, b) => (a.position || 0) - (b.position || 0))
+            .map((user) => (
             <div key={user.username} className="text-terminal-dim text-sm opacity-75">
               <span className="text-terminal-dark text-xs">
                 [typing]

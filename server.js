@@ -26,17 +26,28 @@ app.prepare().then(() => {
   // Store for connected users and their typing states
   const connectedUsers = new Map()
   const typingStates = new Map()
+  const disconnectionTimeouts = new Map() // Grace period for reconnections
 
   io.on('connection', (socket) => {
     console.log(`Client connected: ${socket.id}`)
 
     socket.on('join', (data) => {
       const { username } = data
-      connectedUsers.set(socket.id, { username, socketId: socket.id })
       
-      // Notify others that a user joined
-      socket.broadcast.emit('user_joined', { username })
-      console.log(`User joined: ${username}`)
+      // Check if this user was recently disconnected (reconnection)
+      const wasReconnecting = disconnectionTimeouts.has(username)
+      if (wasReconnecting) {
+        // Cancel the disconnection timeout - user reconnected
+        clearTimeout(disconnectionTimeouts.get(username))
+        disconnectionTimeouts.delete(username)
+        console.log(`User reconnected: ${username}`)
+      } else {
+        // New user joining
+        socket.broadcast.emit('user_joined', { username })
+        console.log(`User joined: ${username}`)
+      }
+      
+      connectedUsers.set(socket.id, { username, socketId: socket.id })
       
       // Emit updated user count to all clients
       io.emit('user_count', connectedUsers.size)
@@ -65,17 +76,27 @@ app.prepare().then(() => {
     socket.on('disconnect', () => {
       const user = connectedUsers.get(socket.id)
       if (user) {
-        // Notify others that user left
-        socket.broadcast.emit('user_left', { username: user.username })
+        // Remove from current connections immediately
         connectedUsers.delete(socket.id)
         typingStates.delete(socket.id)
-        console.log(`User left: ${user.username}`)
         
-        // Emit updated user count to all clients
-        io.emit('user_count', connectedUsers.size)
-        console.log(`User count updated: ${connectedUsers.size}`)
+        // Set a timeout for the user leaving announcement
+        // Give them 5 seconds to reconnect before announcing they left
+        const timeout = setTimeout(() => {
+          socket.broadcast.emit('user_left', { username: user.username })
+          console.log(`User left: ${user.username}`)
+          disconnectionTimeouts.delete(user.username)
+          
+          // Emit updated user count to all clients
+          io.emit('user_count', connectedUsers.size)
+          console.log(`User count updated: ${connectedUsers.size}`)
+        }, 5000)
+        
+        disconnectionTimeouts.set(user.username, timeout)
+        console.log(`Client disconnected: ${socket.id}, grace period started for: ${user.username}`)
+      } else {
+        console.log(`Client disconnected: ${socket.id}`)
       }
-      console.log(`Client disconnected: ${socket.id}`)
     })
   })
 
