@@ -2,6 +2,109 @@ const { createServer } = require('http')
 const { parse } = require('url')
 const next = require('next')
 const { Server } = require('socket.io')
+const DOMPurify = require('dompurify')
+const validator = require('validator')
+const { JSDOM } = require('jsdom')
+
+// Security setup
+const window = new JSDOM('').window
+const purify = DOMPurify(window)
+
+// Security functions
+function sanitizeHtml(html) {
+  if (!html || typeof html !== 'string') return ''
+  return purify.sanitize(html, {
+    ALLOWED_TAGS: [],
+    ALLOWED_ATTR: []
+  })
+}
+
+function sanitizeUsername(username) {
+  if (!username || typeof username !== 'string') {
+    throw new Error('Invalid username')
+  }
+  
+  const clean = sanitizeHtml(username.trim())
+  
+  if (clean.length < 1 || clean.length > 20) {
+    throw new Error('Username must be 1-20 characters')
+  }
+  
+  if (!/^[a-zA-Z0-9\s\-_\.]+$/.test(clean)) {
+    throw new Error('Username contains invalid characters')
+  }
+  
+  // Enhanced system username protection
+  const lowerClean = clean.toLowerCase()
+  const bannedNames = [
+    'system', 'admin', 'administrator', 'root', 'mod', 'moderator',
+    'bot', 'server', 'null', 'undefined', 'anonymous', 'guest',
+    'sys', 'sysadmin', 'support', 'help', 'service'
+  ]
+  
+  if (bannedNames.includes(lowerClean)) {
+    throw new Error('Username is reserved')
+  }
+  
+  // Prevent variations like "System", "SYSTEM", "5ystem", etc.
+  if (lowerClean.includes('system') || lowerClean.includes('admin')) {
+    throw new Error('Username contains restricted terms')
+  }
+  
+  return clean
+}
+
+function sanitizeMessage(message) {
+  if (!message || typeof message !== 'string') {
+    throw new Error('Invalid message')
+  }
+  
+  const clean = sanitizeHtml(message.trim())
+  
+  if (clean.length < 1) {
+    throw new Error('Message cannot be empty')
+  }
+  
+  if (clean.length > 1000) {
+    throw new Error('Message too long')
+  }
+  
+  return clean
+}
+
+// Rate limiting
+class RateLimiter {
+  constructor(maxRequests = 10, windowMs = 60000) {
+    this.requests = new Map()
+    this.maxRequests = maxRequests
+    this.windowMs = windowMs
+  }
+  
+  isAllowed(identifier) {
+    const now = Date.now()
+    const userRequests = this.requests.get(identifier) || []
+    
+    const validRequests = userRequests.filter(
+      timestamp => now - timestamp < this.windowMs
+    )
+    
+    if (validRequests.length >= this.maxRequests) {
+      return false
+    }
+    
+    validRequests.push(now)
+    this.requests.set(identifier, validRequests)
+    return true
+  }
+}
+
+// Rate limiters
+const messageRateLimit = new RateLimiter(30, 60000) // 30 messages per minute
+const typingRateLimit = new RateLimiter(60, 60000)  // 60 typing events per minute
+const joinRateLimit = new RateLimiter(5, 60000)     // 5 joins per minute
+
+// Cooldown tracking for rate-limited users
+const userCooldowns = new Map() // socketId -> { endTime, messageCount }
 
 const dev = process.env.NODE_ENV !== 'production'
 const hostname = '0.0.0.0' // Railway requires 0.0.0.0
@@ -200,33 +303,71 @@ app.prepare().then(() => {
 
     socket.on('join', (data) => {
       const { username, userColor } = data
+      const userIP = socket.handshake.address
       
-      // Validate username exists and is a string
-      if (!username || typeof username !== 'string' || !username.trim()) {
+      // Rate limiting for joins
+      if (!joinRateLimit.isAllowed(userIP)) {
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
-          content: 'Invalid username. Connection rejected.',
+          content: 'Too many connection attempts. Please wait.',
           timestamp: new Date()
         })
         socket.disconnect()
         return
       }
       
-      const cleanUsername = username.trim()
-      
-      // Only block extremely obvious system conflicts
-      if (cleanUsername.toLowerCase() === 'system') {
-        console.log(`❌ Blocked system username conflict: "${cleanUsername}"`)
+      try {
+        // Sanitize and validate username
+        const cleanUsername = sanitizeUsername(username)
+        
+        // Only block extremely obvious system conflicts
+        if (cleanUsername.toLowerCase() === 'system') {
+          console.log(`❌ Blocked system username conflict: "${cleanUsername}"`)
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: 'Username conflicts with system. Please choose a different name.',
+            timestamp: new Date()
+          })
+          socket.disconnect()
+          return
+        }
+        
+        // Store user info with sanitized username
+        connectedUsers.set(socket.id, { 
+          username: cleanUsername, 
+          userColor,
+          joinTime: Date.now()
+        })
+        
+        console.log(`User joined: ${cleanUsername} (${userColor || 'default'})`)
+        
+        // Broadcast join event
+        socket.broadcast.emit('user_joined', { 
+          username: cleanUsername, 
+          userColor 
+        })
+        
+        // Send user count update
+        const userCount = connectedUsers.size
+        io.emit('user_count', userCount)
+        console.log(`User count updated: ${userCount}`)
+        
+      } catch (error) {
+        console.log(`❌ Username validation failed:`, error.message)
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
-          content: 'Username conflicts with system. Please choose a different name.',
+          content: 'Invalid username. Please use only letters, numbers, and basic punctuation (1-20 characters).',
           timestamp: new Date()
         })
         socket.disconnect()
         return
       }
+      
+      // Use the sanitized username
+      const cleanUsername = sanitizeUsername(username)
       
       // Check if this user was recently disconnected (reconnection)
       const wasReconnecting = disconnectionTimeouts.has(cleanUsername)
@@ -235,17 +376,7 @@ app.prepare().then(() => {
         clearTimeout(disconnectionTimeouts.get(cleanUsername))
         disconnectionTimeouts.delete(cleanUsername)
         console.log(`User reconnected: ${cleanUsername}`)
-      } else {
-        // New user joining
-        socket.broadcast.emit('user_joined', { username: cleanUsername, userColor })
-        console.log(`User joined: ${cleanUsername} (${userColor || 'no color'})`)
       }
-      
-      connectedUsers.set(socket.id, { username: cleanUsername, socketId: socket.id, userColor })
-      
-      // Emit updated user count to all clients
-      io.emit('user_count', connectedUsers.size)
-      console.log(`User count updated: ${connectedUsers.size}`)
       
       // Send current media player state to the newly joined user
       socket.emit('media_state_sync', getSynchronizedMediaState())
@@ -275,89 +406,93 @@ app.prepare().then(() => {
       if (!user) return
       
       const username = user.username
+      const userIP = socket.handshake.address
       const currentTime = Date.now()
       
-      // Validate message structure and content - detect script behavior
+      // Check if user is currently in cooldown
+      const cooldown = userCooldowns.get(socket.id)
+      if (cooldown && currentTime < cooldown.endTime) {
+        const remainingTime = Math.ceil((cooldown.endTime - currentTime) / 1000)
+        socket.emit('rate_limit_cooldown', {
+          message: `You are rate limited. Please wait ${remainingTime} seconds before messaging again.`,
+          remainingTime: remainingTime,
+          totalViolations: cooldown.messageCount
+        })
+        return // Block the message completely
+      }
+      
+      // Rate limiting check
+      if (!messageRateLimit.isAllowed(userIP)) {
+        // Escalating cooldown based on violations
+        let existingCooldown = userCooldowns.get(socket.id)
+        let violationCount = existingCooldown ? existingCooldown.messageCount + 1 : 1
+        
+        // Progressive cooldown: 30s, 60s, 120s, 300s (5min)
+        const cooldownDuration = Math.min(30 * Math.pow(2, violationCount - 1), 300) * 1000
+        const cooldownEnd = currentTime + cooldownDuration
+        
+        userCooldowns.set(socket.id, {
+          endTime: cooldownEnd,
+          messageCount: violationCount
+        })
+        
+        console.log(`❌ Rate limit violation ${violationCount} for ${username}, cooldown: ${cooldownDuration/1000}s`)
+        
+        socket.emit('rate_limit_cooldown', {
+          message: `Rate limit exceeded! You are now in cooldown for ${cooldownDuration/1000} seconds.`,
+          remainingTime: cooldownDuration / 1000,
+          totalViolations: violationCount
+        })
+        
+        // Also send a system message
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `☣ TRANSMISSION OVERFLOW - Network lockdown active for ${cooldownDuration/1000}s`,
+          timestamp: new Date()
+        })
+        
+        return // Block the message completely
+      }
+      
+      // Validate message structure
       if (!message || 
           !message.content || 
           typeof message.content !== 'string' || 
-          !message.content.trim() ||
           !message.id ||
           !message.username ||
           !message.timestamp) {
-        console.log(`❌ Invalid/incomplete message structure from ${username}:`, message)
-        // This looks like a script that doesn't send proper message format
-        socket.emit('message', {
-          id: Date.now() + Math.random(),
-          username: 'System',
-          content: 'Message format error. Please use a proper client.',
-          timestamp: new Date()
-        })
+        console.log(`❌ Invalid message structure from ${username}`)
         return
       }
       
-      // Detect rapid-fire scripted behavior (very short messages sent rapidly)
-      const messageLength = message.content.trim().length
-      if (messageLength < 3) {
-        // Short messages are more likely to be script spam
-        if (!messageCooldowns.has(username)) {
-          messageCooldowns.set(username, [])
+      try {
+        // Sanitize message content
+        const sanitizedContent = sanitizeMessage(message.content)
+        
+        // Create clean message object
+        const cleanMessage = {
+          id: message.id,
+          username: sanitizeUsername(message.username),
+          content: sanitizedContent,
+          timestamp: message.timestamp,
+          userColor: message.userColor
         }
         
-        const userMessages = messageCooldowns.get(username)
-        const windowStart = currentTime - 5000 // 5 second window for short messages
-        const recentShortMessages = userMessages.filter(msg => 
-          msg.timestamp > windowStart && msg.length < 3
-        )
+        console.log(`Message from ${username}: "${sanitizedContent.substring(0, 50)}${sanitizedContent.length > 50 ? '...' : ''}"`)
         
-        if (recentShortMessages.length >= 3) {
-          console.log(`❌ Detected scripted spam pattern from ${username}: ${recentShortMessages.length} short messages in 5s`)
-          socket.emit('message', {
-            id: Date.now() + Math.random(),
-            username: 'System',
-            content: 'Automated behavior detected. Connection terminated.',
-            timestamp: new Date()
-          })
-          socket.disconnect()
-          return
-        }
+        // Broadcast to other users (sender already has it via optimistic UI)
+        socket.broadcast.emit('message', cleanMessage)
         
-        // Track this short message
-        userMessages.push({ timestamp: currentTime, length: messageLength })
-        messageCooldowns.set(username, userMessages)
-      }
-      
-      // Standard rate limiting for all messages
-      if (!messageCooldowns.has(username)) {
-        messageCooldowns.set(username, [])
-      }
-      
-      const userMessages = messageCooldowns.get(username)
-      // Remove messages older than the rate limit window
-      const windowStart = currentTime - (RATE_LIMIT_WINDOW_SECONDS * 1000)
-      const recentMessages = userMessages.filter(msg => 
-        typeof msg === 'number' ? msg > windowStart : msg.timestamp > windowStart
-      )
-      
-      if (recentMessages.length >= MESSAGE_RATE_LIMIT) {
-        // User is rate limited
-        console.log(`❌ Rate limit exceeded by ${username}: ${recentMessages.length}/${MESSAGE_RATE_LIMIT}`)
+      } catch (error) {
+        console.log(`❌ Message validation failed from ${username}:`, error.message)
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
-          content: `Rate limit exceeded. Maximum ${MESSAGE_RATE_LIMIT} messages per ${RATE_LIMIT_WINDOW_SECONDS} seconds.`,
+          content: 'Message validation failed. Please check your input.',
           timestamp: new Date()
         })
-        return
       }
-      
-      // Add current message timestamp to rate limiting
-      recentMessages.push(currentTime)
-      messageCooldowns.set(username, recentMessages)
-      
-      console.log('Message received:', message)
-      // Broadcast the message to all connected clients EXCEPT the sender
-      socket.broadcast.emit('message', message)
     })
 
     socket.on('typing', (data) => {
@@ -626,6 +761,9 @@ app.prepare().then(() => {
         // Remove from current connections immediately
         connectedUsers.delete(socket.id)
         typingStates.delete(socket.id)
+        
+        // Clean up rate limit cooldown for this socket
+        userCooldowns.delete(socket.id)
         
         // Set a timeout for the user leaving announcement
         // Give them 5 seconds to reconnect before announcing they left

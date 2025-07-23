@@ -10,17 +10,24 @@
   },
   "dependencies": {
     "autoprefixer": "^10.4.21",
+    "dompurify": "^3.2.6",
+    "jsdom": "^26.1.0",
     "next": "14.2.18",
     "react": "^18",
     "react-dom": "^18",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
-    "ws": "^8.18.0"
+    "validator": "^13.15.15",
+    "ws": "^8.18.0",
+    "xss": "^1.0.15"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.5",
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/validator": "^13.15.2",
     "@types/ws": "^8.5.13",
     "eslint": "^8",
     "eslint-config-next": "14.2.18",

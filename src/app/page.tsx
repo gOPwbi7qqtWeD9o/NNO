@@ -4,12 +4,13 @@ import { useState, useEffect, useRef } from 'react'
 import io, { Socket } from 'socket.io-client'
 import Oscilloscope from './components/Oscilloscope'
 import MediaPlayerFixed from './components/MediaPlayerFixed'
+import { sanitizeMessage, sanitizeUsername } from './utils/security'
 
 interface Message {
   id: string
   username: string
   content: string
-  timestamp: Date
+  timestamp: Date | string | number
   userColor?: string
 }
 
@@ -53,6 +54,12 @@ export default function TerminalChat() {
   const [userCount, setUserCount] = useState<number>(0)
   const [userPositions, setUserPositions] = useState<Map<string, number>>(new Map())
   const [nextPosition, setNextPosition] = useState<number>(0)
+  const [cooldownInfo, setCooldownInfo] = useState<{
+    isActive: boolean
+    message: string
+    remainingTime: number
+    totalViolations: number
+  } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -67,6 +74,10 @@ export default function TerminalChat() {
   useEffect(() => {
     if (isConnected && socket) {
       socket.on('message', (message: Message) => {
+        // Skip messages from the current user (optimistic UI already added it)
+        if (message.username === username) {
+          return
+        }
         setMessages(prev => [...prev, message])
       })
 
@@ -130,12 +141,40 @@ export default function TerminalChat() {
         setUserCount(count)
       })
 
+      socket.on('rate_limit_cooldown', (data: { 
+        message: string, 
+        remainingTime: number, 
+        totalViolations: number 
+      }) => {
+        setCooldownInfo({
+          isActive: true,
+          message: data.message,
+          remainingTime: data.remainingTime,
+          totalViolations: data.totalViolations
+        })
+
+        // Start countdown timer
+        const interval = setInterval(() => {
+          setCooldownInfo(prev => {
+            if (!prev || prev.remainingTime <= 1) {
+              clearInterval(interval)
+              return null
+            }
+            return {
+              ...prev,
+              remainingTime: prev.remainingTime - 1
+            }
+          })
+        }, 1000)
+      })
+
       return () => {
         socket.off('message')
         socket.off('typing')
         socket.off('user_joined')
         socket.off('user_left')
         socket.off('user_count')
+        socket.off('rate_limit_cooldown')
       }
     }
   }, [isConnected, socket, userPositions, nextPosition])
@@ -143,46 +182,79 @@ export default function TerminalChat() {
   const connectToChat = () => {
     if (!username.trim()) return
 
-    const newSocket = io()
-    
-    newSocket.on('connect', () => {
-      setIsConnected(true)
-      setSocket(newSocket)
-      newSocket.emit('join', { username: username.trim(), userColor })
-    })
+    try {
+      // Sanitize username before connecting
+      const sanitizedUsername = sanitizeUsername(username.trim())
+      
+      const newSocket = io()
+      
+      newSocket.on('connect', () => {
+        setIsConnected(true)
+        setSocket(newSocket)
+        newSocket.emit('join', { username: sanitizedUsername, userColor })
+      })
 
-    newSocket.on('disconnect', () => {
-      setIsConnected(false)
-    })
+      newSocket.on('disconnect', () => {
+        setIsConnected(false)
+      })
+    } catch (error) {
+      console.error('Username validation failed:', error)
+      alert('Invalid username. Please use only letters, numbers, and basic punctuation (1-20 characters).')
+    }
   }
 
   const sendMessage = () => {
     if (!currentMessage.trim() || !socket || !isConnected) return
 
-    const message: Message = {
-      id: Date.now() + Math.random().toString(),
-      username,
-      content: currentMessage.trim(),
-      timestamp: new Date(),
-      userColor
+    // Check if user is in cooldown
+    if (cooldownInfo?.isActive) {
+      // Don't send message, cooldown popup is already showing
+      return
     }
 
-    // Add message locally (optimistic UI)
-    setMessages(prev => [...prev, message])
-    
-    // Send to server (server won't echo back to us)
-    socket.emit('message', message)
-    setCurrentMessage('')
+    try {
+      // Sanitize the message content
+      const sanitizedContent = sanitizeMessage(currentMessage.trim())
+      
+      const message: Message = {
+        id: Date.now() + Math.random().toString(),
+        username,
+        content: sanitizedContent,
+        timestamp: new Date(),
+        userColor
+      }
+
+      // Clear typing indicator before sending message
+      handleTyping('')
+
+      // Add message locally (optimistic UI)
+      setMessages(prev => [...prev, message])
+      
+      // Send to server (server won't echo back to us)
+      socket.emit('message', message)
+      setCurrentMessage('')
+    } catch (error) {
+      console.error('Message validation failed:', error)
+      // Could show user-friendly error here
+    }
   }
 
   const handleTyping = (content: string) => {
     if (!socket || !isConnected) return
     
-    socket.emit('typing', { 
-      username, 
-      content, 
-      userColor 
-    })
+    try {
+      // Sanitize typing content (allow empty string for "stopped typing")
+      const sanitizedContent = content ? sanitizeMessage(content) : ''
+      
+      socket.emit('typing', { 
+        username, 
+        content: sanitizedContent, 
+        userColor 
+      })
+    } catch (error) {
+      // Silently ignore typing validation errors to avoid spam
+      console.log('Typing content validation failed:', error)
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -191,8 +263,27 @@ export default function TerminalChat() {
     }
   }
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', { 
+  const formatTime = (date: Date | string | number) => {
+    // Handle different timestamp formats
+    let dateObj: Date
+    
+    if (date instanceof Date) {
+      dateObj = date
+    } else if (typeof date === 'string') {
+      dateObj = new Date(date)
+    } else if (typeof date === 'number') {
+      dateObj = new Date(date)
+    } else {
+      // Fallback to current time if invalid
+      dateObj = new Date()
+    }
+    
+    // Validate the date object
+    if (isNaN(dateObj.getTime())) {
+      dateObj = new Date()
+    }
+    
+    return dateObj.toLocaleTimeString('en-US', { 
       hour12: false,
       hour: '2-digit',
       minute: '2-digit',
@@ -283,6 +374,35 @@ export default function TerminalChat() {
           </span>
         </div>
       </div>
+
+      {/* Rate Limit Cooldown Popup */}
+      {cooldownInfo?.isActive && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-black/90 border border-terminal-rust rounded-lg p-6 max-w-md mx-4">
+            <div className="text-center">
+              <div className="text-terminal-rust text-2xl mb-2">☣ SYSTEM LOCKDOWN</div>
+              <div className="text-terminal-amber text-sm mb-4">
+                TRANSMISSION FREQUENCY EXCEEDED
+              </div>
+              <div className="text-terminal-text text-xs mb-4">
+                Network protocols prevent signal overflow.<br/>
+                Cooling down transmission array...
+              </div>
+              <div className="bg-terminal-rust/20 rounded p-3 mb-4 border border-terminal-rust/50">
+                <div className="text-terminal-rust text-3xl font-bold font-mono">
+                  {cooldownInfo.remainingTime}s
+                </div>
+                <div className="text-terminal-dim text-xs">
+                  BREACH COUNT: {cooldownInfo.totalViolations}
+                </div>
+              </div>
+              <div className="text-terminal-dim text-xs">
+                ► Await system clearance before resuming transmission
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Chat layout */}
       <div className="flex-1 p-6 overflow-hidden flex flex-col relative z-20">
@@ -354,9 +474,12 @@ export default function TerminalChat() {
               }}
               onKeyPress={handleKeyPress}
               onBlur={() => handleTyping('')}
-              className="bg-transparent border-none outline-none w-full text-terminal-text caret-transparent focus:outline-none focus:ring-0 focus:border-transparent text-sm"
-              placeholder=""
-              autoFocus
+              disabled={cooldownInfo?.isActive}
+              className={`bg-transparent border-none outline-none w-full text-terminal-text caret-transparent focus:outline-none focus:ring-0 focus:border-transparent text-sm ${
+                cooldownInfo?.isActive ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              placeholder={cooldownInfo?.isActive ? "☣ TRANSMISSION BLOCKED ☣" : ""}
+              autoFocus={!cooldownInfo?.isActive}
             />
             <span 
               className="absolute text-terminal-amber animate-cursor-blink pointer-events-none text-sm"

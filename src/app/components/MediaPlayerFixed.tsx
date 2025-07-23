@@ -476,11 +476,22 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
   }
 
   const handleClose = () => {
-    // Emit stop event to all users
-    if (socket) {
-      socket.emit('media_stop', { username: username })
+    // Just hide the player locally instead of stopping for everyone
+    setVideoId('')
+    setCurrentlyPlaying(null)
+    setHasError(false)
+    setSkipVotes({ votes: 0, required: 1, totalUsers: 1 })
+    setHasVoted(false)
+    setVideoOwner('')
+    
+    // Stop the player if it exists
+    if (playerRef.current) {
+      try {
+        playerRef.current.stopVideo()
+      } catch (e) {
+        console.log('Error stopping player:', e)
+      }
     }
-    // Local state will be updated via socket event
   }
 
   const handleMinimize = () => {
