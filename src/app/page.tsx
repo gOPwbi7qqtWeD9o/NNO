@@ -10,12 +10,36 @@ interface Message {
   username: string
   content: string
   timestamp: Date
+  userColor?: string
 }
 
 interface TypingUser {
   username: string
   content: string
   position?: number
+  userColor?: string
+}
+
+const USER_COLORS = [
+  'steel', 'rust', 'copper', 'acid', 
+  'plasma', 'neon', 'ember', 'chrome', 
+  'toxic', 'voltage', 'cobalt', 'mercury'
+]
+
+// Color mapping for direct style application
+const COLOR_MAP: Record<string, string> = {
+  steel: '#8892b0',
+  rust: '#cc6633', 
+  copper: '#b87333',
+  acid: '#9acd32',
+  plasma: '#da70d6',
+  neon: '#00ffff',
+  ember: '#ff4500',
+  chrome: '#c0c0c0',
+  toxic: '#32cd32',
+  voltage: '#ffd700',
+  cobalt: '#4169e1',
+  mercury: '#e5e5e5'
 }
 
 export default function TerminalChat() {
@@ -23,6 +47,7 @@ export default function TerminalChat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [currentMessage, setCurrentMessage] = useState('')
   const [username, setUsername] = useState('')
+  const [userColor, setUserColor] = useState('steel')
   const [isConnected, setIsConnected] = useState(false)
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([])
   const [userCount, setUserCount] = useState<number>(0)
@@ -45,7 +70,7 @@ export default function TerminalChat() {
         setMessages(prev => [...prev, message])
       })
 
-      socket.on('typing', (data: { username: string, content: string }) => {
+      socket.on('typing', (data: { username: string, content: string, userColor?: string }) => {
         setTypingUsers(prev => {
           const filtered = prev.filter(user => user.username !== data.username)
           if (data.content) {
@@ -64,7 +89,8 @@ export default function TerminalChat() {
             return [...filtered, { 
               username: data.username, 
               content: data.content,
-              position: userPosition
+              position: userPosition,
+              userColor: data.userColor
             }]
           } else {
             // User stopped typing, remove their position
@@ -126,7 +152,7 @@ export default function TerminalChat() {
       setSocket(newSocket)
       setIsConnected(true)
       
-      newSocket.emit('join', { username: username.trim() })
+      newSocket.emit('join', { username: username.trim(), userColor })
       
       // Welcome message
       setMessages([{
@@ -144,8 +170,12 @@ export default function TerminalChat() {
         id: Date.now().toString(),
         username,
         content: currentMessage.trim(),
-        timestamp: new Date()
+        timestamp: new Date(),
+        userColor
       }
+      
+      // Optimistic UI - add message immediately
+      setMessages(prev => [...prev, message])
       
       socket.emit('message', message)
       socket.emit('typing', { username, content: '' })
@@ -156,7 +186,7 @@ export default function TerminalChat() {
   const handleTyping = (value: string) => {
     setCurrentMessage(value)
     if (socket) {
-      socket.emit('typing', { username, content: value })
+      socket.emit('typing', { username, content: value, userColor })
     }
   }
 
@@ -191,7 +221,7 @@ export default function TerminalChat() {
               <div className="text-terminal-dim text-sm">Enter username to connect</div>
             </div>
             
-            <div className="flex items-center">
+            <div className="flex items-center mb-4">
               <span className="text-terminal-rust mr-2">username:</span>
               <div className="flex-1 relative">
                 <input
@@ -214,6 +244,29 @@ export default function TerminalChat() {
                 >
                   █
                 </span>
+              </div>
+            </div>
+
+            {/* Color Selection */}
+            <div className="mb-4">
+              <div className="text-terminal-rust text-sm mb-2">color scheme:</div>
+              <div className="grid grid-cols-6 gap-2">
+                {USER_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setUserColor(color)}
+                    className={`w-8 h-8 rounded border-2 transition-all hover:scale-110 ${
+                      userColor === color 
+                        ? 'border-terminal-amber shadow-lg shadow-terminal-amber/50' 
+                        : 'border-terminal-dark/40 hover:border-terminal-dim'
+                    }`}
+                    style={{ backgroundColor: COLOR_MAP[color] || '#cc6633' }}
+                    title={color}
+                  />
+                ))}
+              </div>
+              <div className="text-terminal-dim text-xs mt-1 text-center">
+                selected: <span style={{ color: COLOR_MAP[userColor] || '#cc6633' }}>{userColor}</span>
               </div>
             </div>
           </div>
@@ -244,13 +297,20 @@ export default function TerminalChat() {
               <span className="text-terminal-dim text-xs">
                 [{formatTime(message.timestamp)}]
               </span>
-              <span className={`ml-1 sm:ml-2 text-xs sm:text-sm ${
-                message.username === 'SYSTEM' 
-                  ? 'text-terminal-bright' 
-                  : message.username === username
-                  ? 'text-terminal-amber'
-                  : 'text-terminal-rust'
-              }`}>
+              <span 
+                className={`ml-1 sm:ml-2 text-xs sm:text-sm ${
+                  message.username === 'SYSTEM' 
+                    ? 'text-terminal-bright' 
+                    : message.username === username
+                    ? 'text-terminal-amber'
+                    : ''
+                }`}
+                style={{
+                  color: message.userColor && message.username !== 'SYSTEM'
+                    ? COLOR_MAP[message.userColor] || '#cc6633' // Show colors for everyone including yourself
+                    : undefined
+                }}
+              >
                 {message.username}:
               </span>
               <span className="ml-1 sm:ml-2 text-terminal-text text-xs sm:text-sm break-words">
@@ -266,7 +326,12 @@ export default function TerminalChat() {
               <span className="text-terminal-dark text-xs">
                 [typing]
               </span>
-              <span className="ml-1 sm:ml-2 text-terminal-rust">
+              <span 
+                className="ml-1 sm:ml-2"
+                style={{
+                  color: user.userColor ? COLOR_MAP[user.userColor] || '#b8956a' : '#b8956a'
+                }}
+              >
                 {user.username}:
               </span>
               <span className="ml-1 sm:ml-2 break-words">

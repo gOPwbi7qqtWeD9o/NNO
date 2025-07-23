@@ -19,6 +19,20 @@ module.exports = {
           dim: '#8c7456',
           bright: '#e6c088',
           dark: '#665544',
+        },
+        user: {
+          steel: '#8892b0',
+          rust: '#cc6633',
+          copper: '#b87333',
+          acid: '#9acd32',
+          plasma: '#da70d6',
+          neon: '#00ffff',
+          ember: '#ff4500',
+          chrome: '#c0c0c0',
+          toxic: '#32cd32',
+          voltage: '#ffd700',
+          cobalt: '#4169e1',
+          mercury: '#e5e5e5'
         }
       },
       animation: {

@@ -162,7 +162,7 @@ app.prepare().then(() => {
     console.log(`Client connected: ${socket.id}`)
 
     socket.on('join', (data) => {
-      const { username } = data
+      const { username, userColor } = data
       
       // Check if this user was recently disconnected (reconnection)
       const wasReconnecting = disconnectionTimeouts.has(username)
@@ -173,11 +173,11 @@ app.prepare().then(() => {
         console.log(`User reconnected: ${username}`)
       } else {
         // New user joining
-        socket.broadcast.emit('user_joined', { username })
-        console.log(`User joined: ${username}`)
+        socket.broadcast.emit('user_joined', { username, userColor })
+        console.log(`User joined: ${username} (${userColor || 'no color'})`)
       }
       
-      connectedUsers.set(socket.id, { username, socketId: socket.id })
+      connectedUsers.set(socket.id, { username, socketId: socket.id, userColor })
       
       // Emit updated user count to all clients
       io.emit('user_count', connectedUsers.size)
@@ -246,16 +246,17 @@ app.prepare().then(() => {
     })
 
     socket.on('typing', (data) => {
-      const { username, content } = data
+      const { username, content, userColor } = data
+      const user = connectedUsers.get(socket.id)
       
       if (content) {
-        typingStates.set(socket.id, { username, content })
+        typingStates.set(socket.id, { username, content, userColor: user?.userColor })
       } else {
         typingStates.delete(socket.id)
       }
       
       // Broadcast typing state to other clients (not the sender)
-      socket.broadcast.emit('typing', { username, content })
+      socket.broadcast.emit('typing', { username, content, userColor: user?.userColor })
     })
 
     // Media player synchronization events
@@ -512,7 +513,7 @@ app.prepare().then(() => {
         // Set a timeout for the user leaving announcement
         // Give them 5 seconds to reconnect before announcing they left
         const timeout = setTimeout(() => {
-          socket.broadcast.emit('user_left', { username: user.username })
+          socket.broadcast.emit('user_left', { username: user.username, userColor: user.userColor })
           console.log(`User left: ${user.username}`)
           disconnectionTimeouts.delete(user.username)
           
