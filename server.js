@@ -53,7 +53,7 @@ app.prepare().then(() => {
   
   // Media queue cooldown system
   const queueCooldowns = new Map() // Track when users last queued a video
-  const QUEUE_COOLDOWN_SECONDS = 10 // 10 second cooldown between queues
+  const QUEUE_COOLDOWN_SECONDS = 120 // 2 minute cooldown between queues to prevent spam
   
   // Chat rate limiting system
   const messageCooldowns = new Map() // Track user message timestamps
@@ -241,8 +241,8 @@ app.prepare().then(() => {
       }
       
       console.log('Message received:', message)
-      // Broadcast the message to all connected clients
-      io.emit('message', message)
+      // Broadcast the message to all connected clients EXCEPT the sender
+      socket.broadcast.emit('message', message)
     })
 
     socket.on('typing', (data) => {
@@ -277,19 +277,21 @@ app.prepare().then(() => {
         const remainingCooldown = QUEUE_COOLDOWN_SECONDS - timeSinceLastQueue
         
         if (remainingCooldown > 0) {
-          // User is on cooldown, send error message
+          // User is on cooldown, send error message and STOP processing
           socket.emit('message', {
             id: Date.now() + Math.random(),
             username: 'System',
             content: `Queue cooldown active. Wait ${Math.ceil(remainingCooldown)} more seconds before initiating another broadcast.`,
             timestamp: new Date()
           })
-          return
+          console.log(`❌ ${username} blocked by cooldown: ${Math.ceil(remainingCooldown)}s remaining`)
+          return // This should prevent further execution
         }
       }
       
-      // Set cooldown for this user
+      // Set cooldown for this user ONLY if they pass the cooldown check
       queueCooldowns.set(username, currentTime)
+      console.log(`✅ ${username} cooldown set for ${QUEUE_COOLDOWN_SECONDS} seconds`)
       
       // If no video is currently playing, start this one immediately
       if (!mediaPlayerState.videoId || mediaPlayerState.videoId === '') {
