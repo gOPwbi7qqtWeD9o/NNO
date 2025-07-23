@@ -53,6 +53,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     startTime: number | null
   } | null>(null)
   const [shouldSync, setShouldSync] = useState(false)
+  const [isUserSeeking, setIsUserSeeking] = useState(false)
+  const [lastKnownTime, setLastKnownTime] = useState(0)
   const windowRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<any>(null) // YouTube Player API reference
 
@@ -112,6 +114,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setVideoOwner(state.queuedBy || '')
       setHasError(false)
       setHasVoted(false) // Reset vote status for new video
+      setIsUserSeeking(false) // Reset seeking state for new video
+      setLastKnownTime(0) // Reset time tracking for new video
       
       // Store sync information for time synchronization
       if (state.currentTime !== undefined && state.serverTime && state.startTime) {
@@ -139,6 +143,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setVideoOwner('') // Clear video owner
       setSyncInfo(null) // Clear sync info
       setShouldSync(false)
+      setIsUserSeeking(false) // Reset seeking state
+      setLastKnownTime(0) // Reset time tracking
     })
 
     // Listen for skip vote updates
@@ -267,14 +273,63 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                       console.warn('Failed to sync video time:', error)
                     }
                   }
+
+                  // Start tracking time for seek detection
+                  const trackTime = () => {
+                    if (playerRef.current && playerRef.current.getCurrentTime) {
+                      try {
+                        const currentTime = playerRef.current.getCurrentTime()
+                        const duration = playerRef.current.getDuration()
+                        
+                        // Detect if user is seeking (large jump in time)
+                        const timeDiff = Math.abs(currentTime - lastKnownTime)
+                        if (timeDiff > 2 && lastKnownTime > 0) {
+                          console.log('🎯 User seeking detected:', timeDiff, 'seconds jump')
+                          setIsUserSeeking(true)
+                          
+                          // Reset seeking flag after a delay
+                          setTimeout(() => setIsUserSeeking(false), 1000)
+                        }
+                        
+                        setLastKnownTime(currentTime)
+                      } catch (error) {
+                        // Ignore timing errors
+                      }
+                    }
+                  }
+
+                  // Track time every 500ms
+                  const timeTracker = setInterval(trackTime, 500)
+                  
+                  // Store interval reference for cleanup
+                  if (playerRef.current) {
+                    playerRef.current._timeTracker = timeTracker
+                  }
                 },
                 onStateChange: (event: any) => {
                   console.log('🎵 YouTube player state changed:', event.data)
+                  
                   // YT.PlayerState.ENDED = 0
                   if (event.data === 0) {
-                    console.log('🎵 YouTube video ended, advancing queue')
-                    if (socket) {
-                      socket.emit('media_ended', { username })
+                    // Check if this is a natural end or user seeking to end
+                    if (isUserSeeking) {
+                      console.log('🎯 User seeked to end, not advancing queue')
+                      setIsUserSeeking(false) // Reset flag
+                      return
+                    }
+
+                    // Only advance if it's a natural video end
+                    const currentTime = playerRef.current?.getCurrentTime?.() || 0
+                    const duration = playerRef.current?.getDuration?.() || 0
+                    
+                    // If we're within 2 seconds of the actual end, it's likely natural
+                    if (duration > 0 && (duration - currentTime) <= 2) {
+                      console.log('🎵 YouTube video ended naturally, advancing queue')
+                      if (socket) {
+                        socket.emit('media_ended', { username })
+                      }
+                    } else {
+                      console.log('🎯 Video end event ignored (likely seeking), not advancing queue')
                     }
                   }
                 },
@@ -299,12 +354,21 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
     return () => {
       if (playerRef.current) {
         try {
+          // Clear time tracking interval if it exists
+          if (playerRef.current._timeTracker) {
+            clearInterval(playerRef.current._timeTracker)
+          }
+          
           playerRef.current.destroy()
           playerRef.current = null
         } catch (e) {
           // Ignore cleanup errors
         }
       }
+      
+      // Reset seek tracking state
+      setIsUserSeeking(false)
+      setLastKnownTime(0)
     }
   }, [videoId, socket, username, isClient])
 

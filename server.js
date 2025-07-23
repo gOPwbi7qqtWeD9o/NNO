@@ -57,7 +57,7 @@ app.prepare().then(() => {
   
   // Chat rate limiting system
   const messageCooldowns = new Map() // Track user message timestamps
-  const MESSAGE_RATE_LIMIT = 8 // Max messages per time window (much more reasonable)
+  const MESSAGE_RATE_LIMIT = 15 // Max messages per time window (increased for active chat)
   const RATE_LIMIT_WINDOW_SECONDS = 10 // Time window in seconds
 
   // Calculate current playback position based on start time
@@ -213,30 +213,32 @@ app.prepare().then(() => {
       const username = user.username
       const currentTime = Date.now()
       
-      // Check rate limit
-      if (!messageCooldowns.has(username)) {
+      // Check rate limit (temporarily disabled for active chat)
+      if (false && !messageCooldowns.has(username)) {
         messageCooldowns.set(username, [])
       }
       
-      const userMessages = messageCooldowns.get(username)
-      // Remove messages older than the rate limit window
-      const windowStart = currentTime - (RATE_LIMIT_WINDOW_SECONDS * 1000)
-      const recentMessages = userMessages.filter(timestamp => timestamp > windowStart)
-      
-      if (recentMessages.length >= MESSAGE_RATE_LIMIT) {
-        // User is rate limited
-        socket.emit('message', {
-          id: Date.now() + Math.random(),
-          username: 'System',
-          content: `Rate limit exceeded. Maximum ${MESSAGE_RATE_LIMIT} messages per ${RATE_LIMIT_WINDOW_SECONDS} seconds.`,
-          timestamp: new Date()
-        })
-        return
+      if (false) { // Rate limiting temporarily disabled
+        const userMessages = messageCooldowns.get(username)
+        // Remove messages older than the rate limit window
+        const windowStart = currentTime - (RATE_LIMIT_WINDOW_SECONDS * 1000)
+        const recentMessages = userMessages.filter(timestamp => timestamp > windowStart)
+        
+        if (recentMessages.length >= MESSAGE_RATE_LIMIT) {
+          // User is rate limited
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: `Rate limit exceeded. Maximum ${MESSAGE_RATE_LIMIT} messages per ${RATE_LIMIT_WINDOW_SECONDS} seconds.`,
+            timestamp: new Date()
+          })
+          return
+        }
+        
+        // Add current message timestamp and update the map
+        recentMessages.push(currentTime)
+        messageCooldowns.set(username, recentMessages)
       }
-      
-      // Add current message timestamp and update the map
-      recentMessages.push(currentTime)
-      messageCooldowns.set(username, recentMessages)
       
       console.log('Message received:', message)
       // Broadcast the message to all connected clients
