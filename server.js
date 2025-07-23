@@ -60,6 +60,11 @@ app.prepare().then(() => {
   const MESSAGE_RATE_LIMIT = 15 // Max messages per time window (increased for active chat)
   const RATE_LIMIT_WINDOW_SECONDS = 10 // Time window in seconds
 
+  // Connection rate limiting to prevent script reconnection spam
+  const connectionAttempts = new Map() // Track connection attempts by IP
+  const CONNECTION_LIMIT = 5 // Max connections per time window
+  const CONNECTION_WINDOW_SECONDS = 30 // Time window for connection limiting
+
   // Calculate current playback position based on start time
   const getCurrentPlaybackPosition = () => {
     if (!mediaPlayerState.videoId || !mediaPlayerState.startTime || !mediaPlayerState.isPlaying) {
@@ -160,24 +165,83 @@ app.prepare().then(() => {
 
   io.on('connection', (socket) => {
     console.log(`Client connected: ${socket.id}`)
+    
+    // Get client IP for rate limiting (consider proxy headers for Railway)
+    const clientIP = socket.handshake.headers['x-forwarded-for'] || 
+                     socket.handshake.headers['x-real-ip'] || 
+                     socket.conn.remoteAddress || 
+                     'unknown'
+    
+    // Check connection rate limiting
+    const currentTime = Date.now()
+    if (!connectionAttempts.has(clientIP)) {
+      connectionAttempts.set(clientIP, [])
+    }
+    
+    const attempts = connectionAttempts.get(clientIP)
+    const windowStart = currentTime - (CONNECTION_WINDOW_SECONDS * 1000)
+    const recentAttempts = attempts.filter(timestamp => timestamp > windowStart)
+    
+    if (recentAttempts.length >= CONNECTION_LIMIT) {
+      console.log(`❌ Connection rate limit exceeded for IP: ${clientIP}`)
+      socket.emit('message', {
+        id: Date.now() + Math.random(),
+        username: 'System',
+        content: 'Too many connection attempts. Please wait before reconnecting.',
+        timestamp: new Date()
+      })
+      socket.disconnect()
+      return
+    }
+    
+    // Track this connection attempt
+    recentAttempts.push(currentTime)
+    connectionAttempts.set(clientIP, recentAttempts)
 
     socket.on('join', (data) => {
       const { username, userColor } = data
       
-      // Check if this user was recently disconnected (reconnection)
-      const wasReconnecting = disconnectionTimeouts.has(username)
-      if (wasReconnecting) {
-        // Cancel the disconnection timeout - user reconnected
-        clearTimeout(disconnectionTimeouts.get(username))
-        disconnectionTimeouts.delete(username)
-        console.log(`User reconnected: ${username}`)
-      } else {
-        // New user joining
-        socket.broadcast.emit('user_joined', { username, userColor })
-        console.log(`User joined: ${username} (${userColor || 'no color'})`)
+      // Validate username exists and is a string
+      if (!username || typeof username !== 'string' || !username.trim()) {
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: 'Invalid username. Connection rejected.',
+          timestamp: new Date()
+        })
+        socket.disconnect()
+        return
       }
       
-      connectedUsers.set(socket.id, { username, socketId: socket.id, userColor })
+      const cleanUsername = username.trim()
+      
+      // Only block extremely obvious system conflicts
+      if (cleanUsername.toLowerCase() === 'system') {
+        console.log(`❌ Blocked system username conflict: "${cleanUsername}"`)
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: 'Username conflicts with system. Please choose a different name.',
+          timestamp: new Date()
+        })
+        socket.disconnect()
+        return
+      }
+      
+      // Check if this user was recently disconnected (reconnection)
+      const wasReconnecting = disconnectionTimeouts.has(cleanUsername)
+      if (wasReconnecting) {
+        // Cancel the disconnection timeout - user reconnected
+        clearTimeout(disconnectionTimeouts.get(cleanUsername))
+        disconnectionTimeouts.delete(cleanUsername)
+        console.log(`User reconnected: ${cleanUsername}`)
+      } else {
+        // New user joining
+        socket.broadcast.emit('user_joined', { username: cleanUsername, userColor })
+        console.log(`User joined: ${cleanUsername} (${userColor || 'no color'})`)
+      }
+      
+      connectedUsers.set(socket.id, { username: cleanUsername, socketId: socket.id, userColor })
       
       // Emit updated user count to all clients
       io.emit('user_count', connectedUsers.size)
@@ -213,32 +277,83 @@ app.prepare().then(() => {
       const username = user.username
       const currentTime = Date.now()
       
-      // Check rate limit (temporarily disabled for active chat)
-      if (false && !messageCooldowns.has(username)) {
-        messageCooldowns.set(username, [])
+      // Validate message structure and content - detect script behavior
+      if (!message || 
+          !message.content || 
+          typeof message.content !== 'string' || 
+          !message.content.trim() ||
+          !message.id ||
+          !message.username ||
+          !message.timestamp) {
+        console.log(`❌ Invalid/incomplete message structure from ${username}:`, message)
+        // This looks like a script that doesn't send proper message format
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: 'Message format error. Please use a proper client.',
+          timestamp: new Date()
+        })
+        return
       }
       
-      if (false) { // Rate limiting temporarily disabled
-        const userMessages = messageCooldowns.get(username)
-        // Remove messages older than the rate limit window
-        const windowStart = currentTime - (RATE_LIMIT_WINDOW_SECONDS * 1000)
-        const recentMessages = userMessages.filter(timestamp => timestamp > windowStart)
+      // Detect rapid-fire scripted behavior (very short messages sent rapidly)
+      const messageLength = message.content.trim().length
+      if (messageLength < 3) {
+        // Short messages are more likely to be script spam
+        if (!messageCooldowns.has(username)) {
+          messageCooldowns.set(username, [])
+        }
         
-        if (recentMessages.length >= MESSAGE_RATE_LIMIT) {
-          // User is rate limited
+        const userMessages = messageCooldowns.get(username)
+        const windowStart = currentTime - 5000 // 5 second window for short messages
+        const recentShortMessages = userMessages.filter(msg => 
+          msg.timestamp > windowStart && msg.length < 3
+        )
+        
+        if (recentShortMessages.length >= 3) {
+          console.log(`❌ Detected scripted spam pattern from ${username}: ${recentShortMessages.length} short messages in 5s`)
           socket.emit('message', {
             id: Date.now() + Math.random(),
             username: 'System',
-            content: `Rate limit exceeded. Maximum ${MESSAGE_RATE_LIMIT} messages per ${RATE_LIMIT_WINDOW_SECONDS} seconds.`,
+            content: 'Automated behavior detected. Connection terminated.',
             timestamp: new Date()
           })
+          socket.disconnect()
           return
         }
         
-        // Add current message timestamp and update the map
-        recentMessages.push(currentTime)
-        messageCooldowns.set(username, recentMessages)
+        // Track this short message
+        userMessages.push({ timestamp: currentTime, length: messageLength })
+        messageCooldowns.set(username, userMessages)
       }
+      
+      // Standard rate limiting for all messages
+      if (!messageCooldowns.has(username)) {
+        messageCooldowns.set(username, [])
+      }
+      
+      const userMessages = messageCooldowns.get(username)
+      // Remove messages older than the rate limit window
+      const windowStart = currentTime - (RATE_LIMIT_WINDOW_SECONDS * 1000)
+      const recentMessages = userMessages.filter(msg => 
+        typeof msg === 'number' ? msg > windowStart : msg.timestamp > windowStart
+      )
+      
+      if (recentMessages.length >= MESSAGE_RATE_LIMIT) {
+        // User is rate limited
+        console.log(`❌ Rate limit exceeded by ${username}: ${recentMessages.length}/${MESSAGE_RATE_LIMIT}`)
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `Rate limit exceeded. Maximum ${MESSAGE_RATE_LIMIT} messages per ${RATE_LIMIT_WINDOW_SECONDS} seconds.`,
+          timestamp: new Date()
+        })
+        return
+      }
+      
+      // Add current message timestamp to rate limiting
+      recentMessages.push(currentTime)
+      messageCooldowns.set(username, recentMessages)
       
       console.log('Message received:', message)
       // Broadcast the message to all connected clients EXCEPT the sender
@@ -470,11 +585,11 @@ app.prepare().then(() => {
     // Handle video end (when YouTube video finishes naturally)
     socket.on('media_ended', (data) => {
       const { username } = data
-      const user = connectedUsers.get(socket.id)
       
-      if (!user || !mediaPlayerState.videoId) return
+      // Don't require user validation - any client can report video end
+      if (!mediaPlayerState.videoId) return
       
-      console.log(`🎵 Video ended naturally, playing next in queue`)
+      console.log(`🎵 Video ended naturally (reported by ${username || 'unknown'}), playing next in queue`)
       
       // Play next song in queue
       playNextInQueue()

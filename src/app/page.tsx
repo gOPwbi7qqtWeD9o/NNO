@@ -99,34 +99,31 @@ export default function TerminalChat() {
               newPositions.delete(data.username)
               return newPositions
             })
+            return filtered
           }
-          return filtered
         })
       })
 
-      socket.on('user_joined', (data: { username: string }) => {
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          username: 'SYSTEM',
-          content: `${data.username} has joined the chat`,
-          timestamp: new Date()
-        }])
+      socket.on('user_joined', (data: { username: string, userColor?: string }) => {
+        const joinMessage: Message = {
+          id: Date.now() + Math.random().toString(),
+          username: 'System',
+          content: `${data.username} has joined the terminal`,
+          timestamp: new Date(),
+          userColor: 'toxic'
+        }
+        setMessages(prev => [...prev, joinMessage])
       })
 
-      socket.on('user_left', (data: { username: string }) => {
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          username: 'SYSTEM',
-          content: `${data.username} has left the chat`,
-          timestamp: new Date()
-        }])
-        setTypingUsers(prev => prev.filter(user => user.username !== data.username))
-        // Clean up user position when they leave
-        setUserPositions(positions => {
-          const newPositions = new Map(positions)
-          newPositions.delete(data.username)
-          return newPositions
-        })
+      socket.on('user_left', (data: { username: string, userColor?: string }) => {
+        const leftMessage: Message = {
+          id: Date.now() + Math.random().toString(),
+          username: 'System',
+          content: `${data.username} has left the terminal`,
+          timestamp: new Date(),
+          userColor: 'ember'
+        }
+        setMessages(prev => [...prev, leftMessage])
       })
 
       socket.on('user_count', (count: number) => {
@@ -141,76 +138,73 @@ export default function TerminalChat() {
         socket.off('user_count')
       }
     }
-  }, [socket, isConnected, userPositions, nextPosition])
+  }, [isConnected, socket, userPositions, nextPosition])
 
   const connectToChat = () => {
-    if (username.trim()) {
-      const newSocket = io({
-        secure: true,
-        transports: ['websocket', 'polling']
-      })
-      setSocket(newSocket)
+    if (!username.trim()) return
+
+    const newSocket = io()
+    
+    newSocket.on('connect', () => {
       setIsConnected(true)
-      
+      setSocket(newSocket)
       newSocket.emit('join', { username: username.trim(), userColor })
-      
-      // Welcome message
-      setMessages([{
-        id: '0',
-        username: 'SYSTEM',
-        content: `Uplink established. Operator ${username.trim()} verified.`,
-        timestamp: new Date()
-      }])
-    }
+    })
+
+    newSocket.on('disconnect', () => {
+      setIsConnected(false)
+    })
   }
 
   const sendMessage = () => {
-    if (socket && currentMessage.trim()) {
-      const message: Message = {
-        id: Date.now().toString(),
-        username,
-        content: currentMessage.trim(),
-        timestamp: new Date(),
-        userColor
-      }
-      
-      // Optimistic UI - add message immediately
-      setMessages(prev => [...prev, message])
-      
-      socket.emit('message', message)
-      socket.emit('typing', { username, content: '' })
-      setCurrentMessage('')
+    if (!currentMessage.trim() || !socket || !isConnected) return
+
+    const message: Message = {
+      id: Date.now() + Math.random().toString(),
+      username,
+      content: currentMessage.trim(),
+      timestamp: new Date(),
+      userColor
+    }
+
+    // Add message locally (optimistic UI)
+    setMessages(prev => [...prev, message])
+    
+    // Send to server (server won't echo back to us)
+    socket.emit('message', message)
+    setCurrentMessage('')
+  }
+
+  const handleTyping = (content: string) => {
+    if (!socket || !isConnected) return
+    
+    socket.emit('typing', { 
+      username, 
+      content, 
+      userColor 
+    })
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      sendMessage()
     }
   }
 
-  const handleTyping = (value: string) => {
-    setCurrentMessage(value)
-    if (socket) {
-      socket.emit('typing', { username, content: value, userColor })
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      if (isConnected) {
-        sendMessage()
-      } else {
-        connectToChat()
-      }
-    }
-  }
-
-  const formatTime = (timestamp: Date | string) => {
-    const date = timestamp instanceof Date ? timestamp : new Date(timestamp)
+  const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-US', { 
-      hour12: false, 
-      hour: '2-digit', 
+      hour12: false,
+      hour: '2-digit',
       minute: '2-digit',
       second: '2-digit'
     })
   }
 
+  const getUserColor = (color?: string) => {
+    return color && COLOR_MAP[color] ? COLOR_MAP[color] : COLOR_MAP.steel
+  }
+
+  // Original terminal login screen
   if (!isConnected) {
     return (
       <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono p-8 flex items-center justify-center">
@@ -229,7 +223,7 @@ export default function TerminalChat() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  onKeyDown={handleKeyDown}
+                  onKeyPress={(e) => e.key === 'Enter' && connectToChat()}
                   className="bg-transparent border-none outline-none w-full text-terminal-text caret-transparent focus:outline-none focus:ring-0 focus:border-transparent"
                   placeholder=""
                   autoFocus
@@ -275,45 +269,46 @@ export default function TerminalChat() {
     )
   }
 
+  // Original terminal chat interface
   return (
     <main className="h-screen bg-terminal-bg text-terminal-text font-mono flex flex-col overflow-hidden relative">
       <Oscilloscope typingData={typingUsers} currentTyping={currentMessage} />
       
-      {/* User Count Dashboard - Responsive positioning */}
-      <div className="fixed top-2 right-2 sm:top-4 sm:right-4 z-30 bg-black/80 backdrop-blur-sm rounded-lg border border-terminal-rust/50 p-2 sm:p-3">
-        <div className="flex items-center gap-1 sm:gap-2">
-          <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-terminal-rust animate-pulse"></div>
-          <span className="text-terminal-rust text-xs sm:text-sm font-mono">
+      {/* User Count Dashboard */}
+      <div className="fixed top-4 right-4 z-30 bg-black/80 backdrop-blur-sm rounded-lg border border-terminal-rust/50 p-3">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-terminal-rust animate-pulse"></div>
+          <span className="text-terminal-rust text-sm font-mono">
             {userCount} {userCount === 1 ? 'user' : 'users'}
           </span>
         </div>
       </div>
       
-      {/* Mobile-optimized chat layout */}
-      <div className="flex-1 p-2 sm:p-6 overflow-hidden flex flex-col relative z-20">
-        <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin bg-black/60 backdrop-blur-sm rounded p-2 sm:p-4 border border-terminal-dark/30">
+      {/* Chat layout */}
+      <div className="flex-1 p-6 overflow-hidden flex flex-col relative z-20">
+        <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin bg-black/60 backdrop-blur-sm rounded p-4 border border-terminal-dark/30">
           {messages.map((message) => (
             <div key={message.id} className="animate-fade-in">
               <span className="text-terminal-dim text-xs">
                 [{formatTime(message.timestamp)}]
               </span>
               <span 
-                className={`ml-1 sm:ml-2 text-xs sm:text-sm ${
-                  message.username === 'SYSTEM' 
+                className={`ml-2 text-sm ${
+                  message.username === 'System' 
                     ? 'text-terminal-bright' 
                     : message.username === username
                     ? 'text-terminal-amber'
                     : ''
                 }`}
                 style={{
-                  color: message.userColor && message.username !== 'SYSTEM'
-                    ? COLOR_MAP[message.userColor] || '#cc6633' // Show colors for everyone including yourself
+                  color: message.userColor && message.username !== 'System'
+                    ? COLOR_MAP[message.userColor] || '#cc6633'
                     : undefined
                 }}
               >
                 {message.username}:
               </span>
-              <span className="ml-1 sm:ml-2 text-terminal-text text-xs sm:text-sm break-words">
+              <span className="ml-2 text-terminal-text text-sm break-words">
                 {message.content}
               </span>
             </div>
@@ -322,19 +317,19 @@ export default function TerminalChat() {
           {typingUsers
             .sort((a, b) => (a.position || 0) - (b.position || 0))
             .map((user) => (
-            <div key={user.username} className="text-terminal-dim text-xs sm:text-sm opacity-75">
+            <div key={user.username} className="text-terminal-dim text-sm opacity-75">
               <span className="text-terminal-dark text-xs">
                 [typing]
               </span>
               <span 
-                className="ml-1 sm:ml-2"
+                className="ml-2"
                 style={{
                   color: user.userColor ? COLOR_MAP[user.userColor] || '#b8956a' : '#b8956a'
                 }}
               >
                 {user.username}:
               </span>
-              <span className="ml-1 sm:ml-2 break-words">
+              <span className="ml-2 break-words">
                 {user.content}
                 <span className="animate-cursor-blink">█</span>
               </span>
@@ -344,28 +339,29 @@ export default function TerminalChat() {
           <div ref={messagesEndRef} />
         </div>
         
-        <div className="flex items-center mt-2 sm:mt-4 pt-2 sm:pt-4 border-t border-gray-800 bg-black/60 backdrop-blur-sm rounded p-2 sm:p-3">
-          <span className="text-terminal-amber mr-1 sm:mr-2 text-xs sm:text-sm hidden sm:inline">
+        <div className="flex items-center mt-4 pt-4 border-t border-gray-800 bg-black/60 backdrop-blur-sm rounded p-3">
+          <span className="text-terminal-amber mr-2 text-sm">
             {username}@system:~$
-          </span>
-          <span className="text-terminal-amber mr-1 text-xs sm:hidden">
-            $
           </span>
           <div className="flex-1 relative">
             <input
               ref={inputRef}
               type="text"
               value={currentMessage}
-              onChange={(e) => handleTyping(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="bg-transparent border-none outline-none w-full text-terminal-text caret-transparent focus:outline-none focus:ring-0 focus:border-transparent text-xs sm:text-sm"
+              onChange={(e) => {
+                setCurrentMessage(e.target.value)
+                handleTyping(e.target.value)
+              }}
+              onKeyPress={handleKeyPress}
+              onBlur={() => handleTyping('')}
+              className="bg-transparent border-none outline-none w-full text-terminal-text caret-transparent focus:outline-none focus:ring-0 focus:border-transparent text-sm"
               placeholder=""
               autoFocus
             />
             <span 
-              className="absolute text-terminal-amber animate-cursor-blink pointer-events-none text-xs sm:text-sm"
+              className="absolute text-terminal-amber animate-cursor-blink pointer-events-none text-sm"
               style={{ 
-                left: `${currentMessage.length * (typeof window !== 'undefined' && window.innerWidth < 768 ? 0.5 : 0.6)}em`,
+                left: `${currentMessage.length * 0.6}em`,
                 top: 0,
                 lineHeight: 'inherit'
               }}
