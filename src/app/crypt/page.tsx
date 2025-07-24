@@ -77,7 +77,7 @@ export default function CryptEntrance() {
             <div className="mb-8 text-terminal-text text-sm leading-relaxed">
               <div className="mb-4">
                 The concrete tomb slides open with a grinding screech that echoes through the depths. 
-                Ancient dust particles dance in the pale terminal glow as you step into the neural crypt's 
+                Ancient dust particles dance in the pale terminal glow as you step into the neural crypt&apos;s 
                 outer chamber.
               </div>
               

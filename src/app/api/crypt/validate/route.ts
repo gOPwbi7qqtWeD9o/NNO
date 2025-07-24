@@ -55,7 +55,9 @@ export async function POST(request: NextRequest) {
     
     if (unlockedFloor > 0) {
       // Update session with unlocked floor
-      const updatedFloors = [...new Set([...session.unlockedFloors, unlockedFloor])]
+      const floorSet = new Set(session.unlockedFloors)
+      floorSet.add(unlockedFloor)
+      const updatedFloors = Array.from(floorSet)
       const newToken = await updateSession({ unlockedFloors: updatedFloors })
       
       if (newToken) {

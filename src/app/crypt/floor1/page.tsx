@@ -86,8 +86,8 @@ export default function CryptFloor1() {
             with each descending floor.
           </div>
           <div className="text-terminal-dim text-sm border-l-2 border-terminal-rust pl-4">
-            "The old networks remember what Corporate tried to delete. Every bit, every fragment of the 
-            truth they buried still echoes in the deep vaults." - NodePriest
+            &ldquo;The old networks remember what Corporate tried to delete. Every bit, every fragment of the 
+            truth they buried still echoes in the deep vaults.&rdquo; - NodePriest
           </div>
         </div>
 
@@ -96,7 +96,7 @@ export default function CryptFloor1() {
           <div className="text-red-400 text-lg mb-4">FLOOR 02: SEALED</div>
           <div className="text-terminal-text mb-4">
             The descent pathway remains locked behind quantum encryption barriers. 
-            Additional neural keys must be discovered to penetrate deeper into the crypt's core.
+            Additional neural keys must be discovered to penetrate deeper into the crypt&apos;s core.
           </div>
           <div className="text-terminal-dim text-sm">
             Clearance Level Required: SIGMA-7<br/>

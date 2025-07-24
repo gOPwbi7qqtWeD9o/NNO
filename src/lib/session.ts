@@ -10,6 +10,7 @@ export interface CryptSession {
   enteredCrypt: boolean
   unlockedFloors: number[]
   lastActivity: number
+  [key: string]: any // Index signature for JWT compatibility
 }
 
 export async function createSession(userId: string): Promise<string> {
