@@ -15,13 +15,13 @@ export async function POST(request: NextRequest) {
     // Get current session
     const session = await getSession()
     
-    // Check if user has access to this floor
+    // Check if user has completed the prerequisite floor to access the requested floor
     const access = hasFloorAccess(session, floor)
     
     return NextResponse.json({ 
       hasAccess: access,
       currentFloors: session?.unlockedFloors || [],
-      message: access ? `Access granted to Floor ${floor}` : `Access denied to Floor ${floor}`
+      message: access ? `Prerequisites met for Floor ${floor + 1}` : `Prerequisites not met - complete Floor ${floor} first`
     })
     
   } catch (error) {

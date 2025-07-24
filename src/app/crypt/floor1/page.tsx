@@ -92,16 +92,16 @@ export default function CryptFloor1() {
         </div>
 
         {/* Floor 2 Status */}
-        <div className="bg-black/70 backdrop-blur-sm border-2 border-red-500 p-6 mb-6 max-w-2xl mx-auto">
-          <div className="text-red-400 text-lg mb-4">FLOOR 02: SEALED</div>
+        <div className="bg-terminal-bg/80 backdrop-blur-sm border-2 border-terminal-amber p-6 mb-6 max-w-2xl mx-auto">
+          <div className="text-terminal-amber text-lg mb-4">FLOOR 02: PATHWAY UNLOCKED</div>
           <div className="text-terminal-text mb-4">
-            The descent pathway remains locked behind quantum encryption barriers. 
-            Additional neural keys must be discovered to penetrate deeper into the crypt&apos;s core.
+            Neural pathways to the deeper crypt levels have been established. The corporate firewalls 
+            recognize your clearance credentials. Descent to Floor 02 is now authorized.
           </div>
-          <div className="text-terminal-dim text-sm">
-            Clearance Level Required: SIGMA-7<br/>
-            Current Authorization: BASIC-ACCESS<br/>
-            Status: INSUFFICIENT PRIVILEGES
+          <div className="text-terminal-bright text-sm">
+            Clearance Level: SIGMA-7 ACHIEVED<br/>
+            Authorization Status: PATHWAY ACTIVE<br/>
+            Next Challenge: CORPORATE TRANSMISSION ANALYSIS
           </div>
         </div>
 
@@ -114,10 +114,10 @@ export default function CryptFloor1() {
             RETURN TO SURFACE
           </button>
           <button
-            disabled
-            className="bg-gray-700 text-gray-500 px-8 py-3 font-mono cursor-not-allowed border border-gray-600"
+            onClick={() => router.push('/crypt/floor2')}
+            className="bg-red-600 text-white px-8 py-3 font-mono hover:bg-red-500 transition-colors border border-red-500"
           >
-            DESCEND TO FLOOR 02 [LOCKED]
+            DESCEND TO FLOOR 02
           </button>
         </div>
 
@@ -126,6 +126,9 @@ export default function CryptFloor1() {
           <div>CRYPT STATUS: FLOOR 01 BREACHED</div>
           <div>NEXT OBJECTIVE: LOCATE FLOOR 02 NEURAL KEY</div>
           <div>CORPORATE THREAT LEVEL: ELEVATED</div>
+          <div className="text-terminal-rust text-xs mt-4 font-mono">
+            [NEURAL FRAGMENT 01]: R1CS_CONSTRAINTS_BN254
+          </div>
         </div>
       </div>
     </main>

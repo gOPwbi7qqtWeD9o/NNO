@@ -28,6 +28,11 @@ yarn-error.log*
 .env*.local
 .env
 
+# Cipher generation scripts (contain answers)
+homophonic_cipher.js
+*_cipher.js
+cipher_*.js
+
 # Vercel
 .vercel
 
