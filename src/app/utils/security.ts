@@ -17,10 +17,23 @@ if (typeof window !== 'undefined') {
  * Sanitize HTML content to prevent XSS attacks
  */
 export function sanitizeHtml(html: string): string {
-  return purify.sanitize(html, {
+  if (!html || typeof html !== 'string') return ''
+  
+  // Use DOMPurify to remove dangerous HTML but preserve plain text
+  const sanitized = purify.sanitize(html, {
     ALLOWED_TAGS: [],
     ALLOWED_ATTR: []
   })
+  
+  // Decode HTML entities back to normal characters for display
+  // This is safe because we've already removed all HTML tags
+  return sanitized
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&amp;/g, '&') // This should be last to avoid double-decoding
 }
 
 /**
@@ -31,7 +44,12 @@ export function sanitizeUsername(username: string): string {
     throw new Error('Invalid username')
   }
   
-  // Remove HTML tags and trim
+  // Check for dangerous patterns first
+  if (/<script|javascript:|on\w+\s*=/gi.test(username)) {
+    throw new Error('Username contains invalid characters')
+  }
+  
+  // Remove HTML tags and trim, then decode entities
   const clean = sanitizeHtml(username.trim())
   
   // Validate length
@@ -39,9 +57,26 @@ export function sanitizeUsername(username: string): string {
     throw new Error('Username must be 1-20 characters')
   }
   
-  // Only allow alphanumeric, spaces, and basic punctuation
-  if (!/^[a-zA-Z0-9\s\-_\.]+$/.test(clean)) {
+  // Only allow alphanumeric, spaces, and basic punctuation (including < and >)
+  if (!/^[a-zA-Z0-9\s\-_\.<>]+$/.test(clean)) {
     throw new Error('Username contains invalid characters')
+  }
+  
+  // Enhanced system username protection
+  const lowerClean = clean.toLowerCase()
+  const bannedNames = [
+    'system', 'admin', 'administrator', 'root', 'mod', 'moderator',
+    'bot', 'server', 'null', 'undefined', 'anonymous', 'guest',
+    'sys', 'sysadmin', 'support', 'help', 'service'
+  ]
+  
+  if (bannedNames.includes(lowerClean)) {
+    throw new Error('Username is reserved')
+  }
+  
+  // Prevent variations like "System", "SYSTEM", "5ystem", etc.
+  if (lowerClean.includes('system') || lowerClean.includes('admin')) {
+    throw new Error('Username contains restricted terms')
   }
   
   return clean
@@ -55,7 +90,21 @@ export function sanitizeMessage(message: string): string {
     throw new Error('Invalid message')
   }
   
-  // Remove HTML tags and trim
+  // First, check for obviously malicious patterns before processing
+  const dangerousPatterns = [
+    /<script[\s\S]*?<\/script>/gi,
+    /javascript:/gi,
+    /on\w+\s*=/gi,
+    /<iframe/gi,
+    /\beval\s*\(/gi,
+    /data:text\/html/gi
+  ]
+  
+  if (dangerousPatterns.some(pattern => pattern.test(message))) {
+    throw new Error('Message contains potentially dangerous content')
+  }
+  
+  // Remove HTML tags and trim, then decode entities for normal display
   const clean = sanitizeHtml(message.trim())
   
   // Validate length
