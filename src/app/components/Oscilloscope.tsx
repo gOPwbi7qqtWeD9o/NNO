@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react'
 interface OscilloscopeProps {
   typingData: { username: string; content: string }[]
   currentTyping: string
+  cryptLevel?: number
 }
 
 interface SpherePoint {
@@ -17,7 +18,7 @@ interface SpherePoint {
   amplitude: number
 }
 
-const Oscilloscope: React.FC<OscilloscopeProps> = ({ typingData, currentTyping }) => {
+const Oscilloscope: React.FC<OscilloscopeProps> = ({ typingData, currentTyping, cryptLevel = 0 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationRef = useRef<number>()
   const spherePointsRef = useRef<SpherePoint[]>([])
@@ -26,11 +27,48 @@ const Oscilloscope: React.FC<OscilloscopeProps> = ({ typingData, currentTyping }
   const lastTypingTimeRef = useRef(0)
   const typingVelocityRef = useRef({ x: 0, y: 0, z: 0 })
 
+  // Get color and instability based on crypt level
+  const getCryptLevelProperties = (level: number) => {
+    switch (level) {
+      case 0: // Normal chat
+        return {
+          color: 'rgba(255, 180, 100, ',
+          instabilityMultiplier: 1,
+          chaosLevel: 0
+        }
+      case 1: // Floor 1
+        return {
+          color: 'rgba(255, 50, 50, ',
+          instabilityMultiplier: 1.8,
+          chaosLevel: 0.3
+        }
+      case 2: // Floor 2
+        return {
+          color: 'rgba(150, 50, 255, ',
+          instabilityMultiplier: 2.5,
+          chaosLevel: 0.6
+        }
+      case 3: // Floor 3
+        return {
+          color: 'rgba(50, 255, 50, ',
+          instabilityMultiplier: 3.2,
+          chaosLevel: 0.9
+        }
+      default:
+        return {
+          color: 'rgba(255, 255, 255, ',
+          instabilityMultiplier: 4,
+          chaosLevel: 1
+        }
+    }
+  }
+
   // Map characters to distortion properties
   const getCharacterProperties = (char: string) => {
     const code = char.toLowerCase().charCodeAt(0)
+    const { instabilityMultiplier } = getCryptLevelProperties(cryptLevel)
     const frequency = ((code - 97) % 26) * 0.25 + 0.8  // More dramatic frequency range
-    const amplitude = ((code - 97) % 15) * 2.5 + 8     // Much higher amplitude for dramatic distortions
+    const amplitude = (((code - 97) % 15) * 2.5 + 8) * instabilityMultiplier     // Multiply by crypt level
     return { frequency, amplitude }
   }
 
@@ -111,12 +149,17 @@ const Oscilloscope: React.FC<OscilloscopeProps> = ({ typingData, currentTyping }
     const centerY = canvas.height / 2
 
     const animate = () => {
-      timeRef.current += 0.02
+      const { chaosLevel } = getCryptLevelProperties(cryptLevel)
+      timeRef.current += 0.02 + (chaosLevel * 0.01) // Faster time progression at higher levels
       
-      // Update rotation based on typing velocity and natural drift
-      rotationRef.current.x += typingVelocityRef.current.x + 0.003
-      rotationRef.current.y += typingVelocityRef.current.y + 0.005
-      rotationRef.current.z += typingVelocityRef.current.z + 0.002
+      // Update rotation based on typing velocity and natural drift + chaos
+      const chaosX = chaosLevel * (Math.random() - 0.5) * 0.01
+      const chaosY = chaosLevel * (Math.random() - 0.5) * 0.01
+      const chaosZ = chaosLevel * (Math.random() - 0.5) * 0.01
+      
+      rotationRef.current.x += typingVelocityRef.current.x + 0.003 + chaosX
+      rotationRef.current.y += typingVelocityRef.current.y + 0.005 + chaosY
+      rotationRef.current.z += typingVelocityRef.current.z + 0.002 + chaosZ
       
       // Apply damping to typing velocity for natural feel
       typingVelocityRef.current.x *= 0.95
@@ -196,16 +239,22 @@ const Oscilloscope: React.FC<OscilloscopeProps> = ({ typingData, currentTyping }
       ctx.fillRect(0, 0, 600, 600)
       
       projectedPoints.forEach(point => {
-        const alpha = Math.min(Math.max(point.intensity * 2.0, 0.7), 1.0)
+        const { color, chaosLevel } = getCryptLevelProperties(cryptLevel)
+        const baseAlpha = Math.min(Math.max(point.intensity * 2.0, 0.7), 1.0)
+        const chaosAlpha = chaosLevel > 0 ? baseAlpha + (Math.random() - 0.5) * chaosLevel * 0.3 : baseAlpha
+        const alpha = Math.min(Math.max(chaosAlpha, 0.3), 1.0)
         
-        // Use exact integer coordinates
-        const x = Math.round(point.x)
-        const y = Math.round(point.y)
+        // Use exact integer coordinates with slight chaos offset at higher levels
+        const chaosOffsetX = chaosLevel * (Math.random() - 0.5) * 2
+        const chaosOffsetY = chaosLevel * (Math.random() - 0.5) * 2
+        const x = Math.round(point.x + chaosOffsetX)
+        const y = Math.round(point.y + chaosOffsetY)
         
-        ctx.fillStyle = `rgba(255, 180, 100, ${alpha})`
+        ctx.fillStyle = `${color}${alpha})`
         
-        // Much bigger, more visible points
-        ctx.fillRect(x-1, y-1, 4, 4)
+        // Bigger points at higher crypt levels
+        const pointSize = 4 + Math.floor(chaosLevel * 2)
+        ctx.fillRect(x-1, y-1, pointSize, pointSize)
       })
       
       // Remove central glow entirely for now to test

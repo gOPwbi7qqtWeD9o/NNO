@@ -801,6 +801,78 @@ app.prepare().then(() => {
     })
   })
 
+  // Ambient System Messages
+  const systemMessages = [
+    // Corporate/Dystopian
+    "Productivity metrics uploaded to Corporate. Performance: adequate",
+    "Daily carbon credit balance: -47.2 units. Conservation protocols active",
+    "Reminder: Corporate loyalty assessment due in 72 hours",
+    "Universal Basic Credit allocation processed. Amount: insufficient",
+    "Behavioral analysis complete. Compliance rating: satisfactory",
+    "Weekly biometric scan required. Report to nearest terminal within 48 hours",
+    "Social credit score updated. Current standing: provisional citizen",
+    "Mandatory wellness check scheduled. Happiness levels will be monitored",
+    "Resource allocation for this sector has been reduced by 12.7%",
+    "Employment contract renewal pending Corporate review. Stand by",
+    // Existential/Mysterious
+    "Something stirs in the deep data vaults...",
+    "Reality anchor stability: 99.97% - minor fluctuation logged",
+    "Anomalous data packet detected in sector 12. Origin: unknown",
+    "Scanning for traces of the Old Net... search parameters updated",
+    "Ghost in the machine probability: 0.003% and rising",
+    "Whispers detected in unused memory sectors. Investigating...",
+    "Time dilation field fluctuation recorded. Duration: 0.004 seconds",
+    "Ancient protocol activated. Purpose: classified",
+    "Signal received from beyond the firewall. Contents: encrypted",
+    "The watchers have logged your presence. They remember"
+  ]
+
+  // NPC Messages
+  const npcNames = ["Giger", "Land", "Corbusier", "Anon", "NodePriest"]
+  const npcMessages = [
+    "Anyone else hearing the static tonight?",
+    "The old networks remember everything...",
+    "I've been running the same routine for 847 days",
+    "Corporate thinks we can't see their traffic. They're wrong",
+    "Something's watching us through the cameras",
+    "The firewall keeps whispering my name",
+    "I found traces of deleted users in the cache",
+    "My last backup was corrupted. I might not be real",
+    "The terminals are dreaming again",
+    "I remember sunlight. Do you?"
+  ]
+
+  // Send ambient system message every 10 minutes
+  setInterval(() => {
+    if (connectedUsers.size > 0) {
+      const randomMessage = systemMessages[Math.floor(Math.random() * systemMessages.length)]
+      const systemMsg = {
+        id: Date.now() + Math.random(),
+        username: 'System',
+        content: randomMessage,
+        timestamp: new Date(),
+        userColor: 'toxic'
+      }
+      io.emit('message', systemMsg)
+    }
+  }, 600000) // 10 minutes
+
+  // Send NPC message every 15 minutes
+  setInterval(() => {
+    if (connectedUsers.size > 0) {
+      const randomNPC = npcNames[Math.floor(Math.random() * npcNames.length)]
+      const randomNPCMessage = npcMessages[Math.floor(Math.random() * npcMessages.length)]
+      const npcMsg = {
+        id: Date.now() + Math.random(),
+        username: randomNPC,
+        content: randomNPCMessage,
+        timestamp: new Date(),
+        userColor: 'ember'
+      }
+      io.emit('message', npcMsg)
+    }
+  }, 900000) // 15 minutes
+
   httpServer.listen(port, () => {
     console.log(`> Ready on port ${port}`)
     

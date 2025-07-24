@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import io, { Socket } from 'socket.io-client'
 import Oscilloscope from './components/Oscilloscope'
 import MediaPlayerFixed from './components/MediaPlayerFixed'
@@ -44,6 +45,7 @@ const COLOR_MAP: Record<string, string> = {
 }
 
 export default function TerminalChat() {
+  const router = useRouter()
   const [socket, setSocket] = useState<Socket | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [currentMessage, setCurrentMessage] = useState('')
@@ -62,10 +64,9 @@ export default function TerminalChat() {
   } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const usernameMeasureRef = useRef<HTMLSpanElement>(null)
-  const messageMeasureRef = useRef<HTMLSpanElement>(null)
   const [usernameCursorPosition, setUsernameCursorPosition] = useState(0)
   const [messageCursorPosition, setMessageCursorPosition] = useState(0)
+  const [showCryptPopup, setShowCryptPopup] = useState(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -96,17 +97,20 @@ export default function TerminalChat() {
     }
   }, [socket, isConnected])
 
-  // Update cursor positions when text changes
-  useEffect(() => {
-    if (usernameMeasureRef.current) {
-      setUsernameCursorPosition(usernameMeasureRef.current.offsetWidth)
-    }
+  // Simple character-based positioning for monospace fonts
+  const getTextWidth = (text: string, fontSize: number) => {
+    // Monospace character width approximation based on font size
+    const charWidth = fontSize * 0.58 // Slightly smaller for better accuracy
+    return text.length * charWidth
+  }
+
+  // Update cursor positions immediately
+  useLayoutEffect(() => {
+    setUsernameCursorPosition(getTextWidth(username, 16))
   }, [username])
 
-  useEffect(() => {
-    if (messageMeasureRef.current) {
-      setMessageCursorPosition(messageMeasureRef.current.offsetWidth)
-    }
+  useLayoutEffect(() => {
+    setMessageCursorPosition(getTextWidth(currentMessage, 14))
   }, [currentMessage])
 
   useEffect(() => {
@@ -157,7 +161,7 @@ export default function TerminalChat() {
         const joinMessage: Message = {
           id: Date.now() + Math.random().toString(),
           username: 'System',
-          content: `${data.username} has joined the terminal`,
+          content: `${data.username} HAS ESTABLISHED UPLINK`,
           timestamp: new Date(),
           userColor: 'toxic'
         }
@@ -285,6 +289,13 @@ export default function TerminalChat() {
       return
     }
 
+    // Check for ARG trigger phrase
+    if (currentMessage.trim().toLowerCase() === 'enter the crypt') {
+      setShowCryptPopup(true)
+      setCurrentMessage('')
+      return
+    }
+
     try {
       // Sanitize the message content
       const sanitizedContent = sanitizeMessage(currentMessage.trim())
@@ -392,20 +403,6 @@ export default function TerminalChat() {
                   placeholder=""
                   autoFocus
                 />
-                {/* Hidden span to measure text width */}
-                <span 
-                  ref={usernameMeasureRef}
-                  className="absolute opacity-0 pointer-events-none whitespace-pre"
-                  style={{ 
-                    font: 'inherit',
-                    fontSize: 'inherit',
-                    fontFamily: 'inherit',
-                    left: 0,
-                    top: 0
-                  }}
-                >
-                  {username}
-                </span>
                 <span 
                   className="absolute text-terminal-amber animate-cursor-blink pointer-events-none"
                   style={{ 
@@ -502,7 +499,7 @@ export default function TerminalChat() {
               <span 
                 className={`ml-2 text-sm ${
                   message.username === 'System' 
-                    ? 'text-terminal-bright' 
+                    ? 'text-terminal-bright font-bold' 
                     : message.username === username
                     ? 'text-terminal-amber'
                     : ''
@@ -513,7 +510,7 @@ export default function TerminalChat() {
                     : undefined
                 }}
               >
-                {message.username}:
+                {message.username === 'System' ? 'SYSTEM' : message.username}:
               </span>
               <span className="ml-2 text-terminal-text text-sm break-words">
                 {message.content}
@@ -568,20 +565,6 @@ export default function TerminalChat() {
               placeholder={cooldownInfo?.isActive ? "☣ TRANSMISSION BLOCKED ☣" : ""}
               autoFocus={!cooldownInfo?.isActive}
             />
-            {/* Hidden span to measure text width */}
-            <span 
-              ref={messageMeasureRef}
-              className="absolute opacity-0 pointer-events-none whitespace-pre text-sm"
-              style={{ 
-                font: 'inherit',
-                fontSize: 'inherit',
-                fontFamily: 'inherit',
-                left: 0,
-                top: 0
-              }}
-            >
-              {currentMessage}
-            </span>
             <span 
               className="absolute text-terminal-amber animate-cursor-blink pointer-events-none text-sm"
               style={{ 
@@ -598,6 +581,39 @@ export default function TerminalChat() {
 
       {/* Floating Media Player */}
       <MediaPlayerFixed socket={socket} username={username} />
+
+      {/* Crypt Door Popup */}
+      {showCryptPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+          <div className="bg-terminal-bg border-2 border-terminal-amber p-8 max-w-lg text-center terminal-text">
+            <div className="text-terminal-text font-mono mb-8 text-center whitespace-pre-line">
+              {`Before you stands a weathered concrete tomb.
+
+The air thickens and the stench of rot chokes you.
+
+Will you slide open its ancient doors?`}
+            </div>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => {
+                  setShowCryptPopup(false)
+                  // Navigate to the crypt entrance terminal
+                  router.push('/crypt')
+                }}
+                className="bg-terminal-amber text-black px-6 py-2 font-mono hover:bg-yellow-400 transition-colors"
+              >
+                YES
+              </button>
+              <button
+                onClick={() => setShowCryptPopup(false)}
+                className="bg-gray-600 text-white px-6 py-2 font-mono hover:bg-gray-500 transition-colors"
+              >
+                NO
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
