@@ -163,10 +163,10 @@ app.prepare().then(() => {
   const MESSAGE_RATE_LIMIT = 15 // Max messages per time window (increased for active chat)
   const RATE_LIMIT_WINDOW_SECONDS = 10 // Time window in seconds
 
-  // Connection rate limiting to prevent script reconnection spam
+  // Connection rate limiting to prevent script reconnection spam (more lenient)
   const connectionAttempts = new Map() // Track connection attempts by IP
-  const CONNECTION_LIMIT = 5 // Max connections per time window
-  const CONNECTION_WINDOW_SECONDS = 30 // Time window for connection limiting
+  const CONNECTION_LIMIT = 8 // Max connections per time window (increased from 5)
+  const CONNECTION_WINDOW_SECONDS = 60 // Time window for connection limiting (increased from 30)
 
   // Calculate current playback position based on start time
   const getCurrentPlaybackPosition = () => {
@@ -286,14 +286,15 @@ app.prepare().then(() => {
     const recentAttempts = attempts.filter(timestamp => timestamp > windowStart)
     
     if (recentAttempts.length >= CONNECTION_LIMIT) {
-      console.log(`❌ Connection rate limit exceeded for IP: ${clientIP}`)
+      console.log(`❌ Connection rate limit exceeded for IP: ${clientIP} (${recentAttempts.length}/${CONNECTION_LIMIT} in ${CONNECTION_WINDOW_SECONDS}s)`)
       socket.emit('message', {
         id: Date.now() + Math.random(),
         username: 'System',
-        content: 'Too many connection attempts. Please wait before reconnecting.',
+        content: `Connection frequency exceeded. Please wait ${Math.ceil(CONNECTION_WINDOW_SECONDS/2)} seconds before reconnecting.`,
         timestamp: new Date()
       })
-      socket.disconnect()
+      // Add a small delay before disconnect to ensure message is sent
+      setTimeout(() => socket.disconnect(), 500)
       return
     }
     
@@ -305,15 +306,15 @@ app.prepare().then(() => {
       const { username, userColor } = data
       const userIP = socket.handshake.address
       
-      // Rate limiting for joins
+      // Rate limiting for joins (less aggressive)
       if (!joinRateLimit.isAllowed(userIP)) {
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
-          content: 'Too many connection attempts. Please wait.',
+          content: 'Join attempts too frequent. Please wait a moment.',
           timestamp: new Date()
         })
-        socket.disconnect()
+        setTimeout(() => socket.disconnect(), 1000) // Give more time for message delivery
         return
       }
       
@@ -753,6 +754,12 @@ app.prepare().then(() => {
         }
         socket.emit('message', queueMessage)
       }
+    })
+
+    // Handle ping messages from clients to maintain connection
+    socket.on('ping', (data) => {
+      console.log(`Ping received from ${socket.id}`)
+      socket.emit('pong', { timestamp: Date.now(), serverTime: Date.now() })
     })
 
     socket.on('disconnect', () => {
