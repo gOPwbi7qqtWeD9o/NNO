@@ -157,7 +157,7 @@ export default function TerminalChat() {
         const joinMessage: Message = {
           id: Date.now() + Math.random().toString(),
           username: 'System',
-          content: `${data.username} has joined the terminal`,
+          content: `${data.username} has established uplink`,
           timestamp: new Date(),
           userColor: 'toxic'
         }
@@ -168,7 +168,7 @@ export default function TerminalChat() {
         const leftMessage: Message = {
           id: Date.now() + Math.random().toString(),
           username: 'System',
-          content: `${data.username} has left the terminal`,
+          content: `${data.username} has severed uplink`,
           timestamp: new Date(),
           userColor: 'ember'
         }
@@ -239,6 +239,11 @@ export default function TerminalChat() {
         setIsConnected(true)
         setSocket(newSocket)
         newSocket.emit('join', { username: sanitizedUsername, userColor })
+      })
+
+      // Handle pong responses from server
+      newSocket.on('pong', (data) => {
+        console.log(`Pong received from server, latency: ${Date.now() - data.timestamp}ms`)
       })
 
       newSocket.on('disconnect', (reason) => {
