@@ -62,6 +62,10 @@ export default function TerminalChat() {
   } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const usernameMeasureRef = useRef<HTMLSpanElement>(null)
+  const messageMeasureRef = useRef<HTMLSpanElement>(null)
+  const [usernameCursorPosition, setUsernameCursorPosition] = useState(0)
+  const [messageCursorPosition, setMessageCursorPosition] = useState(0)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -70,6 +74,40 @@ export default function TerminalChat() {
   useEffect(() => {
     scrollToBottom()
   }, [messages, typingUsers])
+
+  // Handle page visibility changes to prevent disconnections from tab throttling
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        console.log('Tab became hidden - maintaining connection')
+      } else {
+        console.log('Tab became visible - connection should be maintained')
+        // Optionally ping the server to ensure connection is still alive
+        if (socket && isConnected) {
+          socket.emit('ping', { timestamp: Date.now() })
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [socket, isConnected])
+
+  // Update cursor positions when text changes
+  useEffect(() => {
+    if (usernameMeasureRef.current) {
+      setUsernameCursorPosition(usernameMeasureRef.current.offsetWidth)
+    }
+  }, [username])
+
+  useEffect(() => {
+    if (messageMeasureRef.current) {
+      setMessageCursorPosition(messageMeasureRef.current.offsetWidth)
+    }
+  }, [currentMessage])
 
   useEffect(() => {
     if (isConnected && socket) {
@@ -186,7 +224,16 @@ export default function TerminalChat() {
       // Sanitize username before connecting
       const sanitizedUsername = sanitizeUsername(username.trim())
       
-      const newSocket = io()
+      const newSocket = io({
+        // Match server configuration to prevent timeouts
+        timeout: 60000,           // 60 seconds
+        forceNew: false,          // Reuse existing connection if possible
+        reconnection: true,       // Enable automatic reconnection
+        reconnectionDelay: 1000,  // Wait 1 second before first reconnection
+        reconnectionDelayMax: 5000, // Max 5 seconds between reconnection attempts
+        reconnectionAttempts: 10, // Try up to 10 times (correct property name)
+        transports: ['websocket', 'polling'], // Use same transports as server
+      })
       
       newSocket.on('connect', () => {
         setIsConnected(true)
@@ -194,8 +241,34 @@ export default function TerminalChat() {
         newSocket.emit('join', { username: sanitizedUsername, userColor })
       })
 
-      newSocket.on('disconnect', () => {
+      newSocket.on('disconnect', (reason) => {
+        console.log('Disconnected:', reason)
         setIsConnected(false)
+        // Don't clear socket here - let reconnection handle it
+      })
+
+      // Handle automatic reconnection
+      newSocket.on('reconnect', (attemptNumber) => {
+        console.log(`Reconnected after ${attemptNumber} attempts`)
+        setIsConnected(true)
+        // Re-join when reconnected
+        newSocket.emit('join', { username: sanitizedUsername, userColor })
+      })
+
+      newSocket.on('reconnect_attempt', (attemptNumber) => {
+        console.log(`Reconnection attempt ${attemptNumber}`)
+      })
+
+      newSocket.on('reconnect_failed', () => {
+        console.log('Reconnection failed - connection lost')
+        setIsConnected(false)
+        setSocket(null)
+        // Could show a "connection lost" message to user here
+      })
+
+      // Handle connection errors
+      newSocket.on('connect_error', (error) => {
+        console.error('Connection error:', error)
       })
     } catch (error) {
       console.error('Username validation failed:', error)
@@ -319,10 +392,24 @@ export default function TerminalChat() {
                   placeholder=""
                   autoFocus
                 />
+                {/* Hidden span to measure text width */}
+                <span 
+                  ref={usernameMeasureRef}
+                  className="absolute opacity-0 pointer-events-none whitespace-pre"
+                  style={{ 
+                    font: 'inherit',
+                    fontSize: 'inherit',
+                    fontFamily: 'inherit',
+                    left: 0,
+                    top: 0
+                  }}
+                >
+                  {username}
+                </span>
                 <span 
                   className="absolute text-terminal-amber animate-cursor-blink pointer-events-none"
                   style={{ 
-                    left: `${username.length * 0.6}em`,
+                    left: `${usernameCursorPosition}px`,
                     top: 0,
                     lineHeight: 'inherit'
                   }}
@@ -481,10 +568,24 @@ export default function TerminalChat() {
               placeholder={cooldownInfo?.isActive ? "☣ TRANSMISSION BLOCKED ☣" : ""}
               autoFocus={!cooldownInfo?.isActive}
             />
+            {/* Hidden span to measure text width */}
+            <span 
+              ref={messageMeasureRef}
+              className="absolute opacity-0 pointer-events-none whitespace-pre text-sm"
+              style={{ 
+                font: 'inherit',
+                fontSize: 'inherit',
+                fontFamily: 'inherit',
+                left: 0,
+                top: 0
+              }}
+            >
+              {currentMessage}
+            </span>
             <span 
               className="absolute text-terminal-amber animate-cursor-blink pointer-events-none text-sm"
               style={{ 
-                left: `${currentMessage.length * 0.6}em`,
+                left: `${messageCursorPosition}px`,
                 top: 0,
                 lineHeight: 'inherit'
               }}
