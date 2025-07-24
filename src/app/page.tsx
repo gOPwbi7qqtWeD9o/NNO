@@ -241,6 +241,11 @@ export default function TerminalChat() {
         newSocket.emit('join', { username: sanitizedUsername, userColor })
       })
 
+      // Handle pong responses from server
+      newSocket.on('pong', (data) => {
+        console.log(`Pong received from server, latency: ${Date.now() - data.timestamp}ms`)
+      })
+
       newSocket.on('disconnect', (reason) => {
         console.log('Disconnected:', reason)
         setIsConnected(false)
