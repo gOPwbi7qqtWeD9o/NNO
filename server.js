@@ -127,7 +127,12 @@ app.prepare().then(() => {
     },
     // Important for Railway deployment
     transports: ['websocket', 'polling'],
-    allowEIO3: true
+    allowEIO3: true,
+    // Add connection stability settings
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    upgradeTimeout: 30000,
+    maxHttpBufferSize: 1e6
   })
 
   // Store for connected users and their typing states
@@ -773,7 +778,7 @@ app.prepare().then(() => {
         userCooldowns.delete(socket.id)
         
         // Set a timeout for the user leaving announcement
-        // Give them 5 seconds to reconnect before announcing they left
+        // Give them 10 seconds to reconnect before announcing they left (increased for stability)
         const timeout = setTimeout(() => {
           socket.broadcast.emit('user_left', { username: user.username, userColor: user.userColor })
           console.log(`User left: ${user.username}`)
@@ -798,7 +803,7 @@ app.prepare().then(() => {
             })
           }
           console.log(`User count updated: ${connectedUsers.size}`)
-        }, 5000)
+        }, 10000)
         
         disconnectionTimeouts.set(user.username, timeout)
         console.log(`Client disconnected: ${socket.id}, grace period started for: ${user.username}`)
