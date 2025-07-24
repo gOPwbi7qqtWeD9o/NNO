@@ -13,7 +13,7 @@ const getValidAnswers = () => {
   const floor1Answer = process.env.CRYPT_FLOOR_1_ANSWER
   const floor2Answer = process.env.CRYPT_FLOOR_2_ANSWER
   
-  if (!floor1Answer) {
+  if (!floor1Answer && process.env.NODE_ENV === 'production') {
     console.warn('CRYPT_FLOOR_1_ANSWER not set in environment variables')
   }
   

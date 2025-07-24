@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 
 const key = new TextEncoder().encode(
-  process.env.NEXTAUTH_SECRET || 'fallback-secret-key-change-in-production'
+  process.env.NEXTAUTH_SECRET || 'fallback-build-key-set-in-production-env'
 )
 
 export interface CryptSession {
