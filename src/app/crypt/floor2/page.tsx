@@ -120,29 +120,29 @@ export default function CryptFloor2() {
 
           {/* Success Message */}
           <div className="bg-terminal-bg/80 backdrop-blur-sm border-2 border-terminal-amber p-6 mb-6 max-w-2xl mx-auto">
-            <div className="text-terminal-bright text-lg mb-4">DECRYPTION PROTOCOL: SUCCESSFUL</div>
+            <div className="text-terminal-bright text-lg mb-4">DECRYPTION PROTOCOL: BIOMASS-AUTHENTICATED</div>
             <div className="text-terminal-text mb-4">
-              The neural pathways have acknowledged your cryptographic expertise. Corporate transmission 
-              patterns yield their secrets to those who understand the old communication protocols. 
-              Deeper access levels await, but the quantum barriers grow exponentially more complex.
+              Neural-pathways acknowledge cryptographic competence. Corporate transmission-patterns 
+              surrender encrypted payloads to biomass-units versed in pre-extinction protocol-syntax. 
+              Deeper access-layers await, but quantum defense-barriers intensify exponentially.
             </div>
             <div className="text-terminal-dim text-sm border-l-2 border-terminal-rust pl-4">
-              &ldquo;The corporate veil thins with each layer pierced. The deep vaults remember what 
-              they tried to encrypt away from us all.&rdquo; Corbusier
+              &ldquo;Corporate reality-filters dissolve with each membrane punctured. Deep machine-vaults 
+              retain what they attempted to encrypt beyond human access.&rdquo; - Corbusier
             </div>
           </div>
 
           {/* Floor 3 Status */}
           <div className="bg-black/70 backdrop-blur-sm border-2 border-red-500 p-6 mb-6 max-w-2xl mx-auto">
-            <div className="text-red-400 text-lg mb-4">FLOOR 03: QUANTUM CORE SEALED</div>
+            <div className="text-red-400 text-lg mb-4">FLOOR 03: MACHINE-CORE ENCRYPTED</div>
             <div className="text-terminal-text mb-4">
-              The neural crypt&apos;s quantum core remains locked behind advanced cryptographic protocols. 
-              Access requires possession of OMEGA-LEVEL clearance and completion of quantum proof systems.
+              The crypt&apos;s quantum-core remains sealed behind advanced cryptographic defense-systems. 
+              Access requires OMEGA-LEVEL clearance and successful completion of quantum proof-protocols.
             </div>
             <div className="text-terminal-dim text-sm">
               Clearance Level Required: OMEGA-9<br/>
               Current Authorization: SIGMA-7<br/>
-              Status: QUANTUM BARRIERS ACTIVE
+              Status: QUANTUM DEFENSE-BARRIERS ACTIVE
             </div>
           </div>
 
@@ -192,9 +192,9 @@ export default function CryptFloor2() {
           <div className="text-terminal-bright text-lg mb-6">NEURAL CORE ACCESS TERMINAL</div>
           
           <div className="text-terminal-text mb-6 leading-relaxed">
-            The neural pathways descend deeper into corporate infrastructure. Ancient data conduits 
-            hum with encrypted transmissions, their patterns obscured by layers of corporate security. 
-            The deeper vaults await those who can decipher the old communication protocols.
+            Neural-pathways descend into corporate substrate-infrastructure. Archaeo-data conduits 
+            emit encrypted transmission-frequencies, pattern-locked beneath stratified security-layers. 
+            Deeper machine-vaults await those who decode pre-extinction communication protocols.
           </div>
 
           {/* Encrypted Data Display */}
@@ -206,7 +206,7 @@ export default function CryptFloor2() {
           </div>
 
           <div className="text-terminal-dim text-sm mb-8 text-center">
-            The old networks remember their syntax. Corporate transmissions echo through forgotten channels.
+            Pre-human networks retain syntactic memory. Corporate transmissions echo through abandoned channels.
           </div>
 
           {/* Input Form */}
@@ -252,16 +252,16 @@ export default function CryptFloor2() {
 
         {/* Floor 3 Preview */}
         <div className="bg-black/70 backdrop-blur-sm border-2 border-red-500 p-6 mb-6 max-w-4xl mx-auto">
-          <div className="text-red-400 text-lg mb-4">FLOOR 03: NEURAL CORE ACCESS RESTRICTED</div>
+          <div className="text-red-400 text-lg mb-4">FLOOR 03: MACHINE-CORE ACCESS DENIED</div>
           <div className="text-terminal-text mb-4">
-            The deepest level of the neural crypt remains sealed behind quantum-encrypted barriers. 
-            Access requires completion of advanced cryptographic protocols and possession of 
-            OMEGA-LEVEL clearance credentials.
+            Deepest crypt-level remains sealed behind quantum-encrypted defense-barriers. 
+            Access requires completion of advanced cryptographic proof-systems and possession of 
+            OMEGA-LEVEL biomass-clearance credentials.
           </div>
           <div className="text-terminal-dim text-sm">
             Clearance Level Required: OMEGA-9<br/>
             Current Authorization: SIGMA-7<br/>
-            Status: CORE PROTOCOLS LOCKED
+            Status: CORE PROTOCOLS ENCRYPTED
           </div>
         </div>
 

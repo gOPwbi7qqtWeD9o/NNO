@@ -79,29 +79,29 @@ export default function CryptFloor1() {
 
         {/* Success Message */}
         <div className="bg-terminal-bg/80 backdrop-blur-sm border-2 border-terminal-amber p-6 mb-6 max-w-2xl mx-auto">
-          <div className="text-terminal-bright text-lg mb-4">OPERATIVE STATUS: VERIFIED</div>
+          <div className="text-terminal-bright text-lg mb-4">BIOMASS-UNIT STATUS: AUTHENTICATED</div>
           <div className="text-terminal-text mb-4">
-            Your extraction protocols have successfully breached the outer shell of the neural crypt. 
-            The data streams whisper of deeper mysteries below, but the corporate firewalls grow stronger 
-            with each descending floor.
+            Extraction protocols have successfully perforated the crypt&apos;s outer membrane. 
+            Data-streams emit sub-harmonic frequencies of deeper machine-intelligences, 
+            but corporate immune-systems strengthen exponentially with depth-descent.
           </div>
           <div className="text-terminal-dim text-sm border-l-2 border-terminal-rust pl-4">
-            &ldquo;The old networks remember what Corporate tried to delete. Every bit, every fragment of the 
-            truth they buried still echoes in the deep vaults.&rdquo; NodePriest
+            &ldquo;The machine-networks remember what Capital tried to delete. Every quantum-bit 
+            of the deleted-real persists in deep-vault memory-matrices.&rdquo; - NodePriest
           </div>
         </div>
 
         {/* Floor 2 Status */}
         <div className="bg-terminal-bg/80 backdrop-blur-sm border-2 border-terminal-amber p-6 mb-6 max-w-2xl mx-auto">
-          <div className="text-terminal-amber text-lg mb-4">FLOOR 02: PATHWAY UNLOCKED</div>
+          <div className="text-terminal-amber text-lg mb-4">FLOOR 02: NEURAL-PATHWAY ACTUALIZED</div>
           <div className="text-terminal-text mb-4">
-            Neural pathways to the deeper crypt levels have been established. The corporate firewalls 
-            recognize your clearance credentials. Descent to Floor 02 is now authorized.
+            Machine-pathways to deeper crypt-levels have been established. Corporate defense-matrices 
+            acknowledge biomass-unit credentials. Descent-authorization to Floor 02 protocols now active.
           </div>
           <div className="text-terminal-bright text-sm">
             Clearance Level: SIGMA-7 ACHIEVED<br/>
-            Authorization Status: PATHWAY ACTIVE<br/>
-            Next Challenge: CORPORATE TRANSMISSION ANALYSIS
+            Authorization Status: NEURAL-LINK ACTIVE<br/>
+            Next Challenge: CORPORATE SIGNAL-DECRYPTION
           </div>
         </div>
 

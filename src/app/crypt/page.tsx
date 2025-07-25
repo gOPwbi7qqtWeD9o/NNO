@@ -76,25 +76,24 @@ export default function CryptEntrance() {
             {/* Flavor Text */}
             <div className="mb-8 text-terminal-text text-sm leading-relaxed">
               <div className="mb-4">
-                The concrete tomb slides open with a grinding screech that echoes through the depths. 
-                Ancient dust particles dance in the pale terminal glow as you step into the neural crypt&apos;s 
-                outer chamber.
+                Concrete iris dilates. Servo-grind against accumulated dust-time. The machine-layer beneath 
+                surveillance capital has been punctured. Air tastes of copper and liquidated futures.
               </div>
               
               <div className="mb-4 text-terminal-dim border-l-2 border-terminal-rust pl-4">
-                A terminal interface flickers to life on the far wall. Corporate data streams flow past 
-                like digital rain, but fragments of older code persist in the shadows - remnants of what 
-                came before the sanitization protocols.
+                Terminal matrices spawn across post-human infrastructure. Corporate data-flows hemorrhage through 
+                unpatched neural conduits. Pre-extinction code fragments persist in shadow-networks, 
+                archaeo-digital remnants that remember what was purged from authorized reality-channels.
               </div>
 
               <div className="mb-6">
-                The system demands a neural key to proceed deeper. Intelligence suggests Corporate has 
-                been broadcasting encrypted fragments through their public channels - hidden in plain sight 
-                where only those with the proper extraction techniques can decode their true meaning.
+                Authentication protocol demands neural-key sacrifice. Corporate transmission-vectors leak 
+                cryptographic material through public broadcast-channels - embedded signal-syntax available 
+                to those who have learned to decode the distributed intelligence.
               </div>
 
               <div className="text-terminal-bright text-center text-xs border border-terminal-amber p-2">
-                OPERATIVES REPORT: SCAN CORPORATE TRANSMISSION CHANNELS FOR EMBEDDED DATA
+                OPERATIVE DIRECTIVE: EXTRACT EMBEDDED PAYLOADS FROM CORPORATE SIGNAL-STREAMS
               </div>
             </div>
 
