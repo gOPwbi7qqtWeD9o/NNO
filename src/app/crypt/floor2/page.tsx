@@ -76,7 +76,7 @@ export default function CryptFloor2() {
       <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
         <div className="text-center">
           <div className="text-terminal-amber text-xl mb-4 animate-pulse">SCANNING NEURAL PATHWAYS...</div>
-          <div className="text-terminal-dim">Quantum encryption protocols loading</div>
+          <div className="text-terminal-dim">Neural encryption protocols loading</div>
         </div>
       </main>
     )
@@ -124,7 +124,7 @@ export default function CryptFloor2() {
             <div className="text-terminal-text mb-4">
               Neural-pathways acknowledge cryptographic competence. Corporate transmission-patterns 
               surrender encrypted payloads to biomass-units versed in pre-extinction protocol-syntax. 
-              Deeper access-layers await, but quantum defense-barriers intensify exponentially.
+              Deeper access-layers await, but machine defense-barriers intensify exponentially.
             </div>
             <div className="text-terminal-dim text-sm border-l-2 border-terminal-rust pl-4">
               &ldquo;Corporate reality-filters dissolve with each membrane punctured. Deep machine-vaults 
@@ -165,7 +165,7 @@ export default function CryptFloor2() {
           {/* Status Footer */}
           <div className="text-center text-terminal-dim text-xs space-y-1">
             <div>CRYPT STATUS: FLOOR 02 BREACHED</div>
-            <div>NEXT OBJECTIVE: LOCATE FLOOR 03 QUANTUM KEY</div>
+            <div>NEXT OBJECTIVE: LOCATE FLOOR 03 NEURAL KEY</div>
             <div>CORPORATE THREAT LEVEL: MAXIMUM</div>
             <div className="text-terminal-rust text-xs mt-4 font-mono">
               [NEURAL FRAGMENT 02]: CONSTRAINT_SYSTEM_R1CS

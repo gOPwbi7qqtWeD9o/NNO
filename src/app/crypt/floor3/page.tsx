@@ -243,7 +243,7 @@ export default function CryptFloor3() {
                 disabled={isProcessing || !eigenvalue.trim()}
                 className="bg-terminal-amber text-black px-6 py-3 font-mono hover:bg-yellow-400 transition-colors disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
               >
-                {isProcessing ? 'COMPUTING...' : 'SUBMIT EIGENVALUE'}
+                {isProcessing ? 'COMPUTING...' : 'SUBMIT NEURAL KEY'}
               </button>
               <button
                 type="button"

@@ -37,7 +37,7 @@ export default function CryptFloor1() {
       <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
         <div className="text-center">
           <div className="text-terminal-amber text-xl mb-4 animate-pulse">VALIDATING NEURAL PATHWAY...</div>
-          <div className="text-terminal-dim">Quantum decryption in progress</div>
+          <div className="text-terminal-dim">Neural decryption in progress</div>
         </div>
       </main>
     )
@@ -86,7 +86,7 @@ export default function CryptFloor1() {
             but corporate immune-systems strengthen exponentially with depth-descent.
           </div>
           <div className="text-terminal-dim text-sm border-l-2 border-terminal-rust pl-4">
-            &ldquo;The machine-networks remember what Capital tried to delete. Every quantum-bit 
+            &ldquo;The machine-networks remember what Capital tried to delete. Every data-bit 
             of the deleted-real persists in deep-vault memory-matrices.&rdquo; - NodePriest
           </div>
         </div>
