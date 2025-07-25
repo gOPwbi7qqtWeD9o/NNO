@@ -69,6 +69,7 @@ export default function TerminalChat() {
   const [showCryptPopup, setShowCryptPopup] = useState(false)
   const [adminKey, setAdminKey] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
+  const [neuralNodePresent, setNeuralNodePresent] = useState(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -160,6 +161,11 @@ export default function TerminalChat() {
       })
 
       socket.on('user_joined', (data: { username: string, userColor?: string }) => {
+        // Track NEURALNODE presence
+        if (data.username === 'NEURALNODE') {
+          setNeuralNodePresent(true)
+        }
+        
         const joinMessage: Message = {
           id: Date.now() + Math.random().toString(),
           username: 'System',
@@ -171,6 +177,11 @@ export default function TerminalChat() {
       })
 
       socket.on('user_left', (data: { username: string, userColor?: string }) => {
+        // Track NEURALNODE presence
+        if (data.username === 'NEURALNODE') {
+          setNeuralNodePresent(false)
+        }
+        
         const leftMessage: Message = {
           id: Date.now() + Math.random().toString(),
           username: 'System',
@@ -503,12 +514,7 @@ export default function TerminalChat() {
       <Oscilloscope 
         typingData={typingUsers} 
         currentTyping={currentMessage} 
-        cryptLevel={
-          username === 'NEURALNODE' || 
-          typingUsers.some(user => user.username === 'NEURALNODE') ||
-          messages.some(msg => msg.username === 'NEURALNODE') 
-            ? 4 : 0
-        } 
+        cryptLevel={username === 'NEURALNODE' || neuralNodePresent ? 4 : 0} 
       />
       
       {/* User Count Dashboard */}
