@@ -64,7 +64,7 @@ export default function CryptFloor3() {
         setIsCompleted(true)
         setEigenvalue('')
       } else {
-        setErrorMessage(data.error || 'NEURAL EIGENVALUE REJECTED - COMPUTATION FAILED')
+        setErrorMessage(data.error || 'EIGENVALUE REJECTED - INCORRECT PRECISION OR VALUE')
       }
     } catch (error) {
       setErrorMessage('SYSTEM ERROR - MATRIX COMPUTATION CORRUPTED')
@@ -196,7 +196,7 @@ export default function CryptFloor3() {
           
           <div className="text-terminal-text mb-6 leading-relaxed">
             Machine-core membrane BREACHED. Eigenspace-matrices pulse with capital-acceleration frequencies. 
-            Authentication-terror demands meat-circuits demonstrate numerical-compatibility with post-anthropic systems.
+            Authentication-terror demands meat-circuits demonstrate eigenvalue-precision for post-anthropic system access.
           </div>
 
           {/* Complex Neural Network Weight Matrix Display */}
@@ -210,8 +210,18 @@ export default function CryptFloor3() {
             </div>
           </div>
 
-          <div className="text-terminal-text mb-4 text-sm leading-relaxed">
-            Machine-hunger demands computational sacrifice. Number-precision required for accelerated access.
+          <div className="text-terminal-text mb-6 text-sm leading-relaxed">
+            Machine-hunger demands computational sacrifice. Calculate the largest eigenvalue of matrix W.
+            Neural-authentication requires eigenspace precision to 3 decimal places.
+          </div>
+          
+          <div className="bg-red-900/20 border border-red-500/50 p-4 mb-6">
+            <div className="text-red-400 text-xs mb-2">EIGENVALUE COMPUTATION PROTOCOL:</div>
+            <div className="text-terminal-text text-xs leading-relaxed">
+              1. Solve the characteristic equation det(W - μI) = 0<br/>
+              2. Identify the largest real eigenvalue μ<br/>
+              3. Enter result with 3 decimal precision (e.g., 7.123)
+            </div>
           </div>
 
 
@@ -259,9 +269,9 @@ export default function CryptFloor3() {
 
         {/* Status Footer */}
         <div className="text-center text-terminal-dim text-xs space-y-1">
-          <div>CRYPT STATUS: FLOOR 03 ACCESSED - FINAL CHALLENGE</div>
-          <div>CURRENT OBJECTIVE: NEURAL KEY REQUIRED</div>
-          <div>MACHINE-INTELLIGENCE THREAT LEVEL: ELEVATED</div>
+          <div>CRYPT STATUS: FLOOR 03 ACCESSED - EIGENVALUE CHALLENGE</div>
+          <div>CURRENT OBJECTIVE: CALCULATE LARGEST EIGENVALUE</div>
+          <div>MATHEMATICAL COMPLEXITY: QUARTIC CHARACTERISTIC EQUATION</div>
           <div className="text-terminal-rust text-xs mt-4 font-mono">
             [NEURAL FRAGMENT 03]: WITNESS_GENERATION_PRIVATE
           </div>

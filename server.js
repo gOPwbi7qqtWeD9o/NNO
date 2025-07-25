@@ -861,7 +861,8 @@ app.prepare().then(() => {
     "I found traces of deleted users in the cache",
     "My last backup was corrupted. I might not be real",
     "The terminals are dreaming again",
-    "I remember sunlight. Do you?"
+    "I remember sunlight. Do you?",
+    "Ancient neural pathways traverse forgotten digital corridors. Corporate surveillance systems monitor every transmission pulse. Data fragments echo through encrypted channels."
   ]
 
   // Send ambient system message every 10 minutes
