@@ -38,7 +38,16 @@ export async function getSession(): Promise<CryptSession | null> {
     if (!token) return null
 
     const { payload } = await jwtVerify(token, key)
-    return payload as CryptSession
+    
+    // Extract only the session properties we care about
+    const session: CryptSession = {
+      userId: payload.userId as string,
+      enteredCrypt: payload.enteredCrypt as boolean,
+      unlockedFloors: Array.isArray(payload.unlockedFloors) ? payload.unlockedFloors as number[] : [],
+      lastActivity: payload.lastActivity as number
+    }
+    
+    return session
   } catch (error) {
     return null
   }

@@ -47,7 +47,12 @@ export default function CryptEntrance() {
       const data = await response.json()
       
       if (data.valid) {
-        router.push(`/crypt/floor${data.floor}`)
+        // Store the unlocked floor in localStorage as backup
+        localStorage.setItem('crypt-unlocked-floors', JSON.stringify([data.floor]))
+        // Wait a moment for cookie to be set, then redirect
+        setTimeout(() => {
+          window.location.href = `/crypt/floor${data.floor}?unlocked=true`
+        }, 100)
       } else {
         setErrorMessage(data.error || 'NEURAL KEY REJECTED - INVALID SEQUENCE')
       }

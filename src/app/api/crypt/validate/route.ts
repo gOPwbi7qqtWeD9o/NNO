@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession, updateSession } from '@/lib/session'
+import { getSession, updateSession, CryptSession } from '@/lib/session'
 import { cookies } from 'next/headers'
 import crypto from 'crypto'
+import { SignJWT } from 'jose'
 
 // Hash the answers so they're not visible in source code
 function hashAnswer(answer: string): string {
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
     const submittedHash = hashAnswer(hash)
     const validAnswers = getValidAnswers()
     
+    
     // Check which floor this answer unlocks
     let unlockedFloor = 0
     for (const [floor, validHash] of Object.entries(validAnswers)) {
@@ -56,11 +58,25 @@ export async function POST(request: NextRequest) {
     }
     
     if (unlockedFloor > 0) {
-      // Update session with unlocked floor
-      const floorSet = new Set(session.unlockedFloors)
+      // Create new session with unlocked floor
+      const currentFloors = Array.isArray(session.unlockedFloors) ? session.unlockedFloors : []
+      const floorSet = new Set(currentFloors)
       floorSet.add(unlockedFloor)
       const updatedFloors = Array.from(floorSet)
-      const newToken = await updateSession({ unlockedFloors: updatedFloors })
+      
+      // Create completely new session instead of updating
+      const newSession: CryptSession = {
+        userId: session.userId,
+        enteredCrypt: true,
+        unlockedFloors: updatedFloors,
+        lastActivity: Date.now()
+      }
+      
+      const newToken = await new SignJWT(newSession)
+        .setProtectedHeader({ alg: 'HS256' })
+        .setIssuedAt()
+        .setExpirationTime('24h')
+        .sign(new TextEncoder().encode(process.env.NEXTAUTH_SECRET || 'fallback-build-key-set-in-production-env'))
       
       if (newToken) {
         const response = NextResponse.json({ 

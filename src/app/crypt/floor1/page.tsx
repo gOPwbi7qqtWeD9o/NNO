@@ -12,6 +12,22 @@ export default function CryptFloor1() {
   useEffect(() => {
     const validateAccess = async () => {
       try {
+        // Check if we just unlocked this floor (URL parameter)
+        const urlParams = new URLSearchParams(window.location.search)
+        const justUnlocked = urlParams.get('unlocked') === 'true'
+        
+        // Check localStorage for unlocked floors
+        const storedFloors = localStorage.getItem('crypt-unlocked-floors')
+        const unlockedFloors = storedFloors ? JSON.parse(storedFloors) : []
+        const hasFloorInStorage = unlockedFloors.includes(1)
+        
+        if (justUnlocked || hasFloorInStorage) {
+          setHasAccess(true)
+          setIsValidating(false)
+          return
+        }
+        
+        // Fallback to server check
         const response = await fetch('/api/crypt/check-access', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

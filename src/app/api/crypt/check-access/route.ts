@@ -15,8 +15,15 @@ export async function POST(request: NextRequest) {
     // Get current session
     const session = await getSession()
     
+    // Debug logging
+    console.log('ACCESS CHECK - Floor:', floor)
+    console.log('ACCESS CHECK - Session:', session)
+    console.log('ACCESS CHECK - Unlocked floors:', session?.unlockedFloors)
+    
     // Check if user has completed the prerequisite floor to access the requested floor
     const access = hasFloorAccess(session, floor)
+    
+    console.log('ACCESS CHECK - Access result:', access)
     
     return NextResponse.json({ 
       hasAccess: access,
