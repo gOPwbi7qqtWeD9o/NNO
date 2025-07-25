@@ -500,7 +500,16 @@ export default function TerminalChat() {
   // Original terminal chat interface
   return (
     <main className="h-screen bg-terminal-bg text-terminal-text font-mono flex flex-col overflow-hidden relative">
-      <Oscilloscope typingData={typingUsers} currentTyping={currentMessage} cryptLevel={username === 'NEURALNODE' ? 4 : 0} />
+      <Oscilloscope 
+        typingData={typingUsers} 
+        currentTyping={currentMessage} 
+        cryptLevel={
+          username === 'NEURALNODE' || 
+          typingUsers.some(user => user.username === 'NEURALNODE') ||
+          messages.some(msg => msg.username === 'NEURALNODE') 
+            ? 4 : 0
+        } 
+      />
       
       {/* User Count Dashboard */}
       <div className="fixed top-4 right-4 z-30 bg-black/80 backdrop-blur-sm rounded-lg border border-terminal-rust/50 p-3">

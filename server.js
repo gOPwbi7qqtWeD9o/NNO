@@ -485,10 +485,11 @@ app.prepare().then(() => {
         // Sanitize message content
         const sanitizedContent = sanitizeMessage(message.content)
         
-        // Create clean message object
+        // Create clean message object using stored user info
+        const user = connectedUsers.get(socket.id)
         const cleanMessage = {
           id: message.id,
-          username: sanitizeUsername(message.username),
+          username: user?.username || sanitizeUsername(message.username, user?.isAdmin || false),
           content: sanitizedContent,
           timestamp: message.timestamp,
           userColor: message.userColor
