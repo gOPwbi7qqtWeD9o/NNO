@@ -15,7 +15,7 @@ export default function CryptFloor1() {
         const response = await fetch('/api/crypt/check-access', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ floor: 1 }),
+          body: JSON.stringify({ floor: 0 }), // Check if crypt entrance is completed to access Floor 1
           credentials: 'include'
         })
         
@@ -127,7 +127,7 @@ export default function CryptFloor1() {
           <div>NEXT OBJECTIVE: LOCATE FLOOR 02 NEURAL KEY</div>
           <div>CORPORATE THREAT LEVEL: ELEVATED</div>
           <div className="text-terminal-rust text-xs mt-4 font-mono">
-            [NEURAL FRAGMENT 01]: R1CS_CONSTRAINTS_BN254
+            [NEURAL FRAGMENT 01]: CIRCUIT_DESIGN_ARITHMETIC
           </div>
         </div>
       </div>

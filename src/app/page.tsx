@@ -67,6 +67,8 @@ export default function TerminalChat() {
   const [usernameCursorPosition, setUsernameCursorPosition] = useState(0)
   const [messageCursorPosition, setMessageCursorPosition] = useState(0)
   const [showCryptPopup, setShowCryptPopup] = useState(false)
+  const [adminKey, setAdminKey] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -226,7 +228,7 @@ export default function TerminalChat() {
 
     try {
       // Sanitize username before connecting
-      const sanitizedUsername = sanitizeUsername(username.trim())
+      const sanitizedUsername = sanitizeUsername(username.trim(), isAdmin)
       
       const newSocket = io({
         // Match server configuration to prevent timeouts
@@ -242,7 +244,11 @@ export default function TerminalChat() {
       newSocket.on('connect', () => {
         setIsConnected(true)
         setSocket(newSocket)
-        newSocket.emit('join', { username: sanitizedUsername, userColor })
+        newSocket.emit('join', { 
+          username: sanitizedUsername, 
+          userColor,
+          adminKey: isAdmin ? adminKey : null
+        })
       })
 
       // Handle pong responses from server
@@ -261,7 +267,11 @@ export default function TerminalChat() {
         console.log(`Reconnected after ${attemptNumber} attempts`)
         setIsConnected(true)
         // Re-join when reconnected
-        newSocket.emit('join', { username: sanitizedUsername, userColor })
+        newSocket.emit('join', { 
+          username: sanitizedUsername, 
+          userColor,
+          adminKey: isAdmin ? adminKey : null
+        })
       })
 
       newSocket.on('reconnect_attempt', (attemptNumber) => {
@@ -443,6 +453,44 @@ export default function TerminalChat() {
                 selected: <span style={{ color: COLOR_MAP[userColor] || '#cc6633' }}>{userColor}</span>
               </div>
             </div>
+
+          </div>
+          
+          {/* Admin Panel */}
+          <div className="w-full max-w-md mt-4">
+            <div className="bg-black/60 backdrop-blur-sm rounded p-6 border border-terminal-dark/40">
+              <div className="text-center mb-4">
+                <div className="text-terminal-rust text-sm mb-2">Admin Access</div>
+              </div>
+              
+              <div className="flex items-center mb-4">
+                <span className="text-terminal-rust mr-2 text-sm">admin key:</span>
+                <div className="flex-1">
+                  <input
+                    type="password"
+                    value={adminKey}
+                    onChange={(e) => {
+                      setAdminKey(e.target.value)
+                      // Check admin key from environment variable
+                      if (e.target.value === process.env.NEXT_PUBLIC_ADMIN_KEY) {
+                        setIsAdmin(true)
+                      } else {
+                        setIsAdmin(false)
+                      }
+                    }}
+                    className="bg-transparent border-none outline-none w-full text-terminal-text focus:outline-none focus:ring-0 focus:border-transparent text-sm"
+                    placeholder="enter admin key"
+                  />
+                </div>
+              </div>
+              
+              {isAdmin && (
+                <div className="text-red-500 text-xs animate-pulse border border-red-500 p-2 bg-black/80 rounded">
+                  ⚠ NEURAL ADMIN MODE ACTIVE ⚠<br/>
+                  <span className="text-xs">NeuralNode username unlocked</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>
@@ -452,7 +500,7 @@ export default function TerminalChat() {
   // Original terminal chat interface
   return (
     <main className="h-screen bg-terminal-bg text-terminal-text font-mono flex flex-col overflow-hidden relative">
-      <Oscilloscope typingData={typingUsers} currentTyping={currentMessage} />
+      <Oscilloscope typingData={typingUsers} currentTyping={currentMessage} cryptLevel={username === 'NEURALNODE' ? 4 : 0} />
       
       {/* User Count Dashboard */}
       <div className="fixed top-4 right-4 z-30 bg-black/80 backdrop-blur-sm rounded-lg border border-terminal-rust/50 p-3">
@@ -502,22 +550,35 @@ export default function TerminalChat() {
                 [{formatTime(message.timestamp)}]
               </span>
               <span 
-                className={`ml-2 text-sm ${
+                className={`ml-2 ${
                   message.username === 'System' 
-                    ? 'text-terminal-bright font-bold' 
+                    ? 'text-terminal-bright font-bold text-sm' 
+                    : message.username === 'NEURALNODE'
+                    ? 'font-bold text-xl'
                     : message.username === username
-                    ? 'text-terminal-amber'
-                    : ''
+                    ? 'text-terminal-amber text-sm'
+                    : 'text-sm'
                 }`}
                 style={{
-                  color: message.userColor && message.username !== 'System'
+                  color: message.username === 'NEURALNODE'
+                    ? 'rgb(255, 0, 0)'
+                    : (message.userColor && message.username !== 'System' && message.username !== 'NEURALNODE')
                     ? COLOR_MAP[message.userColor] || '#cc6633'
                     : undefined
                 }}
               >
                 {message.username === 'System' ? 'SYSTEM' : message.username}:
               </span>
-              <span className="ml-2 text-terminal-text text-sm break-words">
+              <span 
+                className={`ml-2 break-words ${
+                  message.username === 'NEURALNODE'
+                    ? 'font-bold text-xl'
+                    : 'text-terminal-text text-sm'
+                }`}
+                style={{
+                  color: message.username === 'NEURALNODE' ? 'rgb(255, 0, 0)' : undefined
+                }}
+              >
                 {message.content}
               </span>
             </div>

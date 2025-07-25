@@ -69,5 +69,9 @@ export async function updateSession(updates: Partial<CryptSession>): Promise<str
 
 export function hasFloorAccess(session: CryptSession | null, floor: number): boolean {
   if (!session || !session.enteredCrypt) return false
+  
+  // Floor 0 (crypt entrance) is always accessible once entered
+  if (floor === 0) return true
+  
   return session.unlockedFloors.includes(floor)
 }

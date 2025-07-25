@@ -54,6 +54,13 @@ const Oscilloscope: React.FC<OscilloscopeProps> = ({ typingData, currentTyping, 
           instabilityMultiplier: 3.2,
           chaosLevel: 0.9
         }
+      case 4: // Floor 4 - NeuralNode communion, massive distortion
+        return {
+          color: 'rgba(255, 0, 0, ',
+          instabilityMultiplier: 8.5,
+          chaosLevel: 2.5,
+          growthFactor: 2.8
+        }
       default:
         return {
           color: 'rgba(255, 255, 255, ',
@@ -222,21 +229,25 @@ const Oscilloscope: React.FC<OscilloscopeProps> = ({ typingData, currentTyping, 
       // Sort by depth and draw with crisp rendering
       projectedPoints.sort((a, b) => a.z - b.z)
       
-      // TRULY pixel-perfect setup
+      // Dynamic sizing based on crypt level - Floor 4 grows massively
+      const { growthFactor = 1 } = getCryptLevelProperties(cryptLevel)
+      const baseSize = 600
+      const actualSize = baseSize * growthFactor
+      
       const dpr = window.devicePixelRatio || 1
-      canvas.width = 600 * dpr
-      canvas.height = 600 * dpr
-      canvas.style.width = '600px'
-      canvas.style.height = '600px'
+      canvas.width = actualSize * dpr
+      canvas.height = actualSize * dpr
+      canvas.style.width = `${actualSize}px`
+      canvas.style.height = `${actualSize}px`
       ctx.scale(dpr, dpr)
       
       ctx.imageSmoothingEnabled = false
       ctx.globalAlpha = 1.0
       
-      // Clear canvas completely
-      ctx.clearRect(0, 0, 600, 600)
+      // Clear canvas completely - use actual size
+      ctx.clearRect(0, 0, actualSize, actualSize)
       ctx.fillStyle = 'transparent'
-      ctx.fillRect(0, 0, 600, 600)
+      ctx.fillRect(0, 0, actualSize, actualSize)
       
       projectedPoints.forEach(point => {
         const { color, chaosLevel } = getCryptLevelProperties(cryptLevel)

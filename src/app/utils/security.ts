@@ -39,7 +39,7 @@ export function sanitizeHtml(html: string): string {
 /**
  * Sanitize and validate username
  */
-export function sanitizeUsername(username: string): string {
+export function sanitizeUsername(username: string, isAdmin: boolean = false): string {
   if (!username || typeof username !== 'string') {
     throw new Error('Invalid username')
   }
@@ -67,8 +67,13 @@ export function sanitizeUsername(username: string): string {
   const bannedNames = [
     'system', 'admin', 'administrator', 'root', 'mod', 'moderator',
     'bot', 'server', 'null', 'undefined', 'anonymous', 'guest',
-    'sys', 'sysadmin', 'support', 'help', 'service'
+    'sys', 'sysadmin', 'support', 'help', 'service', 'neuralnode'
   ]
+  
+  // Admin bypass for NeuralNode (allow both cases)
+  if (isAdmin && lowerClean === 'neuralnode') {
+    return 'NEURALNODE' // Force uppercase for consistency
+  }
   
   if (bannedNames.includes(lowerClean)) {
     throw new Error('Username is reserved')

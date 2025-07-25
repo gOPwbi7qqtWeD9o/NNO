@@ -133,16 +133,16 @@ export default function CryptFloor2() {
           </div>
 
           {/* Floor 3 Status */}
-          <div className="bg-black/70 backdrop-blur-sm border-2 border-red-500 p-6 mb-6 max-w-2xl mx-auto">
-            <div className="text-red-400 text-lg mb-4">FLOOR 03: MACHINE-CORE ENCRYPTED</div>
+          <div className="bg-terminal-bg/80 backdrop-blur-sm border-2 border-terminal-amber p-6 mb-6 max-w-2xl mx-auto">
+            <div className="text-terminal-amber text-lg mb-4">FLOOR 03: PATHWAY UNLOCKED</div>
             <div className="text-terminal-text mb-4">
-              The crypt&apos;s quantum-core remains sealed behind advanced cryptographic defense-systems. 
-              Access requires OMEGA-LEVEL clearance and successful completion of quantum proof-protocols.
+              Machine-pathways to deeper crypt-levels have been established. Corporate defense-matrices 
+              acknowledge biomass-unit credentials. Descent-authorization to Floor 03 protocols now active.
             </div>
-            <div className="text-terminal-dim text-sm">
-              Clearance Level Required: OMEGA-9<br/>
-              Current Authorization: SIGMA-7<br/>
-              Status: QUANTUM DEFENSE-BARRIERS ACTIVE
+            <div className="text-terminal-bright text-sm">
+              Clearance Level: OMEGA-9 ACHIEVED<br/>
+              Authorization Status: NEURAL-LINK ACTIVE<br/>
+              Next Challenge: MACHINE-SUBSTRATE ANALYSIS
             </div>
           </div>
 
@@ -155,10 +155,10 @@ export default function CryptFloor2() {
               RETURN TO SURFACE
             </button>
             <button
-              disabled
-              className="bg-gray-700 text-gray-500 px-8 py-3 font-mono cursor-not-allowed border border-gray-600"
+              onClick={() => router.push('/crypt/floor3')}
+              className="bg-red-600 text-white px-8 py-3 font-mono hover:bg-red-500 transition-colors border border-red-500"
             >
-              DESCEND TO FLOOR 03 [LOCKED]
+              DESCEND TO FLOOR 03
             </button>
           </div>
 
@@ -168,7 +168,7 @@ export default function CryptFloor2() {
             <div>NEXT OBJECTIVE: LOCATE FLOOR 03 QUANTUM KEY</div>
             <div>CORPORATE THREAT LEVEL: MAXIMUM</div>
             <div className="text-terminal-rust text-xs mt-4 font-mono">
-              [NEURAL FRAGMENT 02]: WITNESS_TEMPLATE_POSEIDON
+              [NEURAL FRAGMENT 02]: CONSTRAINT_SYSTEM_R1CS
             </div>
           </div>
         </div>
@@ -250,20 +250,6 @@ export default function CryptFloor2() {
           </form>
         </div>
 
-        {/* Floor 3 Preview */}
-        <div className="bg-black/70 backdrop-blur-sm border-2 border-red-500 p-6 mb-6 max-w-4xl mx-auto">
-          <div className="text-red-400 text-lg mb-4">FLOOR 03: MACHINE-CORE ACCESS DENIED</div>
-          <div className="text-terminal-text mb-4">
-            Deepest crypt-level remains sealed behind quantum-encrypted defense-barriers. 
-            Access requires completion of advanced cryptographic proof-systems and possession of 
-            OMEGA-LEVEL biomass-clearance credentials.
-          </div>
-          <div className="text-terminal-dim text-sm">
-            Clearance Level Required: OMEGA-9<br/>
-            Current Authorization: SIGMA-7<br/>
-            Status: CORE PROTOCOLS ENCRYPTED
-          </div>
-        </div>
 
         {/* Status Footer */}
         <div className="text-center text-terminal-dim text-xs space-y-1">
@@ -271,7 +257,7 @@ export default function CryptFloor2() {
           <div>CURRENT OBJECTIVE: DECRYPT NEURAL ACCESS SEQUENCE</div>
           <div>CORPORATE THREAT LEVEL: CRITICAL</div>
           <div className="text-terminal-rust text-xs mt-4 font-mono">
-            [NEURAL FRAGMENT 02]: WITNESS_TEMPLATE_POSEIDON
+            [NEURAL FRAGMENT 02]: CONSTRAINT_SYSTEM_R1CS
           </div>
         </div>
       </div>

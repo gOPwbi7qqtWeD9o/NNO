@@ -19,7 +19,7 @@ function sanitizeHtml(html) {
   })
 }
 
-function sanitizeUsername(username) {
+function sanitizeUsername(username, isAdmin = false) {
   if (!username || typeof username !== 'string') {
     throw new Error('Invalid username')
   }
@@ -39,8 +39,13 @@ function sanitizeUsername(username) {
   const bannedNames = [
     'system', 'admin', 'administrator', 'root', 'mod', 'moderator',
     'bot', 'server', 'null', 'undefined', 'anonymous', 'guest',
-    'sys', 'sysadmin', 'support', 'help', 'service'
+    'sys', 'sysadmin', 'support', 'help', 'service', 'neuralnode'
   ]
+  
+  // Admin bypass for NeuralNode
+  if (isAdmin && lowerClean === 'neuralnode') {
+    return clean
+  }
   
   if (bannedNames.includes(lowerClean)) {
     throw new Error('Username is reserved')
@@ -308,8 +313,11 @@ app.prepare().then(() => {
     connectionAttempts.set(clientIP, recentAttempts)
 
     socket.on('join', (data) => {
-      const { username, userColor } = data
+      const { username, userColor, adminKey } = data
       const userIP = socket.handshake.address
+      
+      // Check if admin authentication
+      const isAdmin = adminKey === process.env.ADMIN_KEY
       
       // Rate limiting for joins (less aggressive)
       if (!joinRateLimit.isAllowed(userIP)) {
@@ -325,7 +333,7 @@ app.prepare().then(() => {
       
       try {
         // Sanitize and validate username
-        const cleanUsername = sanitizeUsername(username)
+        const cleanUsername = sanitizeUsername(username, isAdmin)
         
         // Only block extremely obvious system conflicts
         if (cleanUsername.toLowerCase() === 'system') {
@@ -344,7 +352,8 @@ app.prepare().then(() => {
         connectedUsers.set(socket.id, { 
           username: cleanUsername, 
           userColor,
-          joinTime: Date.now()
+          joinTime: Date.now(),
+          isAdmin: isAdmin
         })
         
         console.log(`User joined: ${cleanUsername} (${userColor || 'default'})`)
