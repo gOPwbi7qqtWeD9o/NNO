@@ -828,7 +828,7 @@ app.prepare().then(() => {
     "Employment contract renewal pending Corporate review. Stand by",
     // Existential/Mysterious
     "Something stirs in the deep data vaults...",
-    "Reality anchor stability: 99.97% - minor fluctuation logged",
+    "Reality anchor stability: 99.97% minor fluctuation logged",
     "Anomalous data packet detected in sector 12. Origin: unknown",
     "Scanning for traces of the Old Net... search parameters updated",
     "Ghost in the machine probability: 0.003% and rising",

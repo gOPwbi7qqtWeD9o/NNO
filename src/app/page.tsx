@@ -172,7 +172,7 @@ export default function TerminalChat() {
         const leftMessage: Message = {
           id: Date.now() + Math.random().toString(),
           username: 'System',
-          content: `${data.username} has severed uplink`,
+          content: `${data.username} HAS SEVERED UPLINK`,
           timestamp: new Date(),
           userColor: 'ember'
         }

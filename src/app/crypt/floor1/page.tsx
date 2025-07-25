@@ -87,7 +87,7 @@ export default function CryptFloor1() {
           </div>
           <div className="text-terminal-dim text-sm border-l-2 border-terminal-rust pl-4">
             &ldquo;The old networks remember what Corporate tried to delete. Every bit, every fragment of the 
-            truth they buried still echoes in the deep vaults.&rdquo; - NodePriest
+            truth they buried still echoes in the deep vaults.&rdquo; NodePriest
           </div>
         </div>
 

@@ -30,6 +30,7 @@ yarn-error.log*
 
 # Cipher generation scripts (contain answers)
 homophonic_cipher.js
+homophonic_algorithm.js
 *_cipher.js
 cipher_*.js
 

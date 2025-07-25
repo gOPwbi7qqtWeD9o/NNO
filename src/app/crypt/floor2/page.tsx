@@ -128,7 +128,7 @@ export default function CryptFloor2() {
             </div>
             <div className="text-terminal-dim text-sm border-l-2 border-terminal-rust pl-4">
               &ldquo;The corporate veil thins with each layer pierced. The deep vaults remember what 
-              they tried to encrypt away from us all.&rdquo; - Corbusier
+              they tried to encrypt away from us all.&rdquo; Corbusier
             </div>
           </div>
 
