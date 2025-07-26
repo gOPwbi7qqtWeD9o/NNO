@@ -75,6 +75,8 @@ export default function TerminalChat() {
   const [targetIP, setTargetIP] = useState('')
   const [banReason, setBanReason] = useState('')
   const [targetUsername, setTargetUsername] = useState('')
+  const [adminMessages, setAdminMessages] = useState<Message[]>([])
+  const [typingTimeoutRef, setTypingTimeoutRef] = useState<NodeJS.Timeout | null>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -102,6 +104,10 @@ export default function TerminalChat() {
     
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      // Clean up typing timeout on unmount
+      if (typingTimeoutRef) {
+        clearTimeout(typingTimeoutRef)
+      }
     }
   }, [socket, isConnected])
 
@@ -163,6 +169,19 @@ export default function TerminalChat() {
             return filtered
           }
         })
+      })
+
+      // Handle admin-only messages
+      socket.on('admin_message', (data: { id: string, content: string, timestamp: Date }) => {
+        if (isAdmin) {
+          const adminMessage: Message = {
+            id: data.id,
+            username: 'ADMIN',
+            content: data.content,
+            timestamp: data.timestamp
+          }
+          setAdminMessages(prev => [...prev, adminMessage])
+        }
       })
 
       socket.on('user_joined', (data: { username: string, userColor?: string }) => {
@@ -339,7 +358,11 @@ export default function TerminalChat() {
         userColor
       }
 
-      // Clear typing indicator before sending message
+      // Clear typing indicator and timeout before sending message
+      if (typingTimeoutRef) {
+        clearTimeout(typingTimeoutRef)
+        setTypingTimeoutRef(null)
+      }
       handleTyping('')
 
       // Add message locally (optimistic UI)
@@ -358,8 +381,23 @@ export default function TerminalChat() {
     if (!socket || !isConnected) return
     
     try {
+      // Clear existing timeout
+      if (typingTimeoutRef) {
+        clearTimeout(typingTimeoutRef)
+        setTypingTimeoutRef(null)
+      }
+      
       // Sanitize typing content (allow empty string for "stopped typing")
       const sanitizedContent = content ? sanitizeMessage(content) : ''
+      
+      // Set new timeout if user is typing (65 seconds - slightly longer than server timeout)
+      if (sanitizedContent) {
+        const timeout = setTimeout(() => {
+          socket.emit('typing', { username, content: '', userColor })
+          setTypingTimeoutRef(null)
+        }, 65000)
+        setTypingTimeoutRef(timeout)
+      }
       
       socket.emit('typing', { 
         username, 
@@ -588,8 +626,28 @@ export default function TerminalChat() {
           </button>
           
           {showAdminPanel && (
-            <div className="absolute top-12 left-0 bg-black/90 backdrop-blur-sm border border-red-500 rounded-lg p-4 w-80">
+            <div className="absolute top-12 left-0 bg-black/90 backdrop-blur-sm border border-red-500 rounded-lg p-4 w-80 max-h-96 overflow-y-auto">
               <div className="text-red-400 text-sm font-mono mb-4">🔨 ADMIN CONTROLS</div>
+              
+              {/* Admin Messages Display */}
+              {adminMessages.length > 0 && (
+                <div className="mb-4 border-b border-terminal-dim pb-4">
+                  <div className="text-terminal-text text-xs mb-2">Admin Messages:</div>
+                  <div className="bg-black/60 border border-terminal-dim rounded p-2 max-h-32 overflow-y-auto">
+                    {adminMessages.slice(-5).map((msg) => (
+                      <div key={msg.id} className="text-xs text-terminal-bright mb-1">
+                        [{formatTime(msg.timestamp)}] {msg.content}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setAdminMessages([])}
+                    className="text-xs text-terminal-dim hover:text-terminal-text mt-1"
+                  >
+                    Clear Messages
+                  </button>
+                </div>
+              )}
               
               {/* IP Ban Section */}
               <div className="mb-4">

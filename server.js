@@ -186,6 +186,10 @@ app.prepare().then(() => {
   const typingSpamMetrics = new Map() // Track typing events by IP
   const TYPING_RATE_LIMIT = 50 // Max typing events per window (increased)
   const TYPING_WINDOW_SECONDS = 10 // Time window for typing rate limit
+  
+  // Typing timeout system
+  const TYPING_TIMEOUT_MS = 60000 // 1 minute timeout
+  const TYPING_CLEANUP_INTERVAL = 30000 // Check every 30 seconds
 
   // Connection rate limiting to prevent script reconnection spam (more lenient)
   const connectionAttempts = new Map() // Track connection attempts by IP
@@ -755,7 +759,13 @@ app.prepare().then(() => {
       }
       
       if (content) {
-        typingStates.set(socket.id, { username, content, userColor: user?.userColor })
+        typingStates.set(socket.id, { 
+          username, 
+          content, 
+          userColor: user?.userColor,
+          lastActivity: currentTime,
+          socketId: socket.id
+        })
       } else {
         typingStates.delete(socket.id)
       }
@@ -1016,16 +1026,20 @@ app.prepare().then(() => {
       socket.emit('pong', { timestamp: Date.now(), serverTime: Date.now() })
     })
 
+    // Helper function to send admin-only messages
+    const sendAdminMessage = (content) => {
+      socket.emit('admin_message', {
+        id: Date.now() + Math.random(),
+        content: content,
+        timestamp: new Date()
+      })
+    }
+
     // Admin commands for IP management
     socket.on('admin_command', (data) => {
       const user = connectedUsers.get(socket.id)
       if (!user || !user.isAdmin) {
-        socket.emit('message', {
-          id: Date.now() + Math.random(),
-          username: 'System',
-          content: 'Access denied. Admin privileges required.',
-          timestamp: new Date()
-        })
+        sendAdminMessage('Access denied. Admin privileges required.')
         return
       }
 
@@ -1057,24 +1071,14 @@ app.prepare().then(() => {
         
         console.log(`🔨 Admin ${user.username} banned IP: ${targetIP} (Reason: ${reason || 'No reason provided'})`)
         
-        socket.emit('message', {
-          id: Date.now() + Math.random(),
-          username: 'System',
-          content: `IP ${targetIP} has been permanently banned.`,
-          timestamp: new Date()
-        })
+        sendAdminMessage(`IP ${targetIP} has been permanently banned.`)
         
       } else if (command === 'unban_ip' && targetIP) {
         bannedIPs.delete(targetIP)
         
         console.log(`🔨 Admin ${user.username} unbanned IP: ${targetIP}`)
         
-        socket.emit('message', {
-          id: Date.now() + Math.random(),
-          username: 'System',
-          content: `IP ${targetIP} has been unbanned.`,
-          timestamp: new Date()
-        })
+        sendAdminMessage(`IP ${targetIP} has been unbanned.`)
         
       } else if (command === 'list_bans') {
         const banList = Array.from(bannedIPs)
@@ -1082,12 +1086,7 @@ app.prepare().then(() => {
           ? `Banned IPs (${banList.length}): ${banList.join(', ')}`
           : 'No IPs are currently banned.'
         
-        socket.emit('message', {
-          id: Date.now() + Math.random(),
-          username: 'System',
-          content: banMessage,
-          timestamp: new Date()
-        })
+        sendAdminMessage(banMessage)
         
       } else if (command === 'list_users') {
         const userList = Array.from(connectedUsers.values()).map(userData => 
@@ -1098,12 +1097,7 @@ app.prepare().then(() => {
           ? `Connected Users (${userList.length}):\n${userList.join('\n')}`
           : 'No users currently connected.'
         
-        socket.emit('message', {
-          id: Date.now() + Math.random(),
-          username: 'System',
-          content: userMessage,
-          timestamp: new Date()
-        })
+        sendAdminMessage(userMessage)
         
       } else if (command === 'get_user_ip' && data.targetUsername) {
         const targetUser = Array.from(connectedUsers.values()).find(userData => 
@@ -1111,28 +1105,13 @@ app.prepare().then(() => {
         )
         
         if (targetUser) {
-          socket.emit('message', {
-            id: Date.now() + Math.random(),
-            username: 'System',
-            content: `User ${targetUser.username} IP: ${targetUser.ipAddress}`,
-            timestamp: new Date()
-          })
+          sendAdminMessage(`User ${targetUser.username} IP: ${targetUser.ipAddress}`)
         } else {
-          socket.emit('message', {
-            id: Date.now() + Math.random(),
-            username: 'System',
-            content: `User ${data.targetUsername} not found.`,
-            timestamp: new Date()
-          })
+          sendAdminMessage(`User ${data.targetUsername} not found.`)
         }
         
       } else {
-        socket.emit('message', {
-          id: Date.now() + Math.random(),
-          username: 'System',
-          content: 'Invalid admin command. Available: ban_ip, unban_ip, list_bans, list_users, get_user_ip',
-          timestamp: new Date()
-        })
+        sendAdminMessage('Invalid admin command. Available: ban_ip, unban_ip, list_bans, list_users, get_user_ip')
       }
     })
 
@@ -1271,6 +1250,29 @@ app.prepare().then(() => {
       io.emit('message', npcMsg)
     }
   }, 900000) // 15 minutes
+
+  // Clean up expired typing states every 30 seconds
+  setInterval(() => {
+    const now = Date.now()
+    const expiredTyping = []
+    
+    for (const [socketId, typingData] of typingStates.entries()) {
+      if (now - typingData.lastActivity > TYPING_TIMEOUT_MS) {
+        expiredTyping.push({ socketId, typingData })
+        typingStates.delete(socketId)
+      }
+    }
+    
+    // Broadcast empty typing events for expired states
+    expiredTyping.forEach(({ typingData }) => {
+      io.emit('typing', { 
+        username: typingData.username, 
+        content: '', 
+        userColor: typingData.userColor 
+      })
+      console.log(`🧹 Cleared expired typing state for ${typingData.username}`)
+    })
+  }, TYPING_CLEANUP_INTERVAL)
 
   httpServer.listen(port, () => {
     console.log(`> Ready on port ${port}`)
