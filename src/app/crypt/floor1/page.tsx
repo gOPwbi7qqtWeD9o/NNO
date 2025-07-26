@@ -50,7 +50,7 @@ export default function CryptFloor1() {
 
   if (isValidating) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center overflow-y-auto">
         <div className="text-center">
           <div className="text-terminal-amber text-xl mb-4 animate-pulse">VALIDATING NEURAL PATHWAY...</div>
           <div className="text-terminal-dim">Neural decryption in progress</div>
@@ -61,7 +61,7 @@ export default function CryptFloor1() {
 
   if (!hasAccess) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center overflow-y-auto">
         <div className="text-center">
           <div className="text-red-500 text-xl mb-4">ACCESS DENIED</div>
           <div className="text-terminal-dim mb-6">Neural pathway not established</div>

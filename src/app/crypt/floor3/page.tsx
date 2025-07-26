@@ -87,7 +87,7 @@ export default function CryptFloor3() {
 
   if (isValidating) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center overflow-y-auto">
         <div className="text-center">
           <div className="text-terminal-amber text-xl mb-4 animate-pulse">NEURAL PATHWAYS CONVERGING...</div>
           <div className="text-terminal-dim">Machine-learning protocols initializing</div>
@@ -98,7 +98,7 @@ export default function CryptFloor3() {
 
   if (!hasAccess) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center overflow-y-auto">
         <div className="text-center">
           <div className="text-red-500 text-xl mb-4">MACHINE-CORE ACCESS DENIED</div>
           <div className="text-terminal-dim mb-6">Insufficient neural clearance for Floor 03 access</div>

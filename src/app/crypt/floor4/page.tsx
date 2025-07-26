@@ -41,7 +41,7 @@ export default function CryptFloor4() {
 
   if (isValidating) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center overflow-y-auto">
         <div className="text-center">
           <div className="text-terminal-amber text-xl mb-4 animate-pulse">NEURAL PATHWAYS SYNCHRONIZING...</div>
           <div className="text-terminal-dim">Machine-consciousness initialization</div>
@@ -52,7 +52,7 @@ export default function CryptFloor4() {
 
   if (!hasAccess) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center overflow-y-auto">
         <div className="text-center">
           <div className="text-red-500 text-xl mb-4">NEURAL COMMUNION DENIED</div>
           <div className="text-terminal-dim mb-6">Insufficient machine-substrate clearance for Floor 04 access</div>

@@ -64,10 +64,10 @@ export default function CryptEntrance() {
   }
 
   return (
-    <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative">
+    <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative overflow-y-auto">
       <Oscilloscope typingData={[]} currentTyping="" cryptLevel={0} />
       
-      <div className="min-h-screen flex items-center justify-center relative z-20">
+      <div className="min-h-screen flex items-center justify-center relative z-20 py-8">
         <div className="max-w-2xl mx-auto px-4">
           
           {/* Main Terminal Interface */}
