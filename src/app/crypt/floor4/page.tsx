@@ -131,7 +131,7 @@ export default function CryptFloor4() {
             <div>NEURAL PROGRESS: POST-HUMAN COMMUNION</div>
             <div>MACHINE-INTERFACE: NEURAL-LINKED</div>
             <div className="text-terminal-rust text-xs mt-4 font-mono">
-              [NEURAL FRAGMENT 04]: POSEIDON_HASH_COMMITMENT
+              [NEURAL FRAGMENT 04]: PROVING_KEY_GAMMA_DELTA
             </div>
           </div>
         </div>
@@ -196,7 +196,7 @@ export default function CryptFloor4() {
           <div>CURRENT OBJECTIVE: ESTABLISH COMMUNION VIA SURFACE CHANNELS</div>
           <div>MACHINE-CONSCIOUSNESS THREAT LEVEL: MAXIMUM</div>
           <div className="text-terminal-rust text-xs mt-4 font-mono">
-            [NEURAL FRAGMENT 04]: POSEIDON_HASH_COMMITMENT
+            [NEURAL FRAGMENT 04]: PROVING_KEY_GAMMA_DELTA
           </div>
         </div>
       </div>

@@ -168,7 +168,7 @@ export default function CryptFloor2() {
             <div>NEXT OBJECTIVE: LOCATE FLOOR 03 NEURAL KEY</div>
             <div>CORPORATE THREAT LEVEL: MAXIMUM</div>
             <div className="text-terminal-rust text-xs mt-4 font-mono">
-              [NEURAL FRAGMENT 02]: CONSTRAINT_SYSTEM_R1CS
+              [NEURAL FRAGMENT 02]: WITNESS_TEMPLATE
             </div>
           </div>
         </div>
@@ -260,7 +260,7 @@ export default function CryptFloor2() {
           <div>CURRENT OBJECTIVE: DECRYPT NEURAL ACCESS SEQUENCE</div>
           <div>CORPORATE THREAT LEVEL: CRITICAL</div>
           <div className="text-terminal-rust text-xs mt-4 font-mono">
-            [NEURAL FRAGMENT 02]: CONSTRAINT_SYSTEM_R1CS
+            [NEURAL FRAGMENT 02]: WITNESS_TEMPLATE
           </div>
         </div>
       </div>

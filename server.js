@@ -846,7 +846,8 @@ app.prepare().then(() => {
     "Time dilation field fluctuation recorded. Duration: 0.004 seconds",
     "Ancient protocol activated. Purpose: classified",
     "Signal received from beyond the firewall. Contents: encrypted",
-    "The watchers have logged your presence. They remember"
+    "The watchers have logged your presence. They remember",
+    "41 6E 63 69 65 6E 74 20 6E 65 75 72 61 6C 20 70 61 74 68 77 61 79 73 20 74 72 61 76 65 72 73 65 20 66 6F 72 67 6F 74 74 65 6E 20 64 69 67 69 74 61 6C 20 63 6F 72 72 69 64 6F 72 73 2E 0A 20 20 43 6F 72 70 6F 72 61 74 65 20 73 75 72 76 65 69 6C 6C 61 6E 63 65 20 73 79 73 74 65 6D 73 20 6D 6F 6E 69 74 6F 72 20 65 76 65 72 79 20 74 72 61 6E 73 6D 69 73 73 69 6F 6E 20 70 75 6C 73 65 2E 20 44 61 74 61 20 66 72 61 67 6D 65 6E 74 73 0A 20 20 20 65 63 68 6F 20 74 68 72 6F 75 67 68 20 65 6E 63 72 79 70 74 65 64 20 63 68 61 6E 6E 65 6C 73 2E"
   ]
 
   // NPC Messages
