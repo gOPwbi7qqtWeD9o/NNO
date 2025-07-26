@@ -108,6 +108,87 @@ const messageRateLimit = new RateLimiter(30, 60000) // 30 messages per minute
 const typingRateLimit = new RateLimiter(60, 60000)  // 60 typing events per minute
 const joinRateLimit = new RateLimiter(5, 60000)     // 5 joins per minute
 
+// Advanced bot detection functions
+function calculateStringSimilarity(str1, str2) {
+  if (!str1 || !str2) return 0
+  
+  // Normalize strings (remove spaces, convert to lowercase)
+  const s1 = str1.toLowerCase().replace(/\s+/g, '')
+  const s2 = str2.toLowerCase().replace(/\s+/g, '')
+  
+  if (s1 === s2) return 1
+  if (s1.length === 0 || s2.length === 0) return 0
+  
+  // Calculate Levenshtein distance
+  const matrix = Array(s1.length + 1).fill().map(() => Array(s2.length + 1).fill(0))
+  
+  for (let i = 0; i <= s1.length; i++) matrix[i][0] = i
+  for (let j = 0; j <= s2.length; j++) matrix[0][j] = j
+  
+  for (let i = 1; i <= s1.length; i++) {
+    for (let j = 1; j <= s2.length; j++) {
+      const cost = s1[i - 1] === s2[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,     // deletion
+        matrix[i][j - 1] + 1,     // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      )
+    }
+  }
+  
+  const maxLength = Math.max(s1.length, s2.length)
+  return 1 - (matrix[s1.length][s2.length] / maxLength)
+}
+
+function detectScrollingPattern(contents) {
+  if (contents.length < 3) return false
+  
+  // Check for scrolling/shifting patterns
+  for (let i = 0; i < contents.length - 2; i++) {
+    const str1 = contents[i]
+    const str2 = contents[i + 1]
+    const str3 = contents[i + 2]
+    
+    // Check if content is shifting (common in scrolling text bots)
+    if (str1.length > 3 && str2.length > 3 && str3.length > 3) {
+      // Look for substring patterns indicating scrolling
+      if ((str1.includes(str2.substring(1)) && str2.includes(str3.substring(1))) ||
+          (str2.includes(str1.substring(1)) && str3.includes(str2.substring(1)))) {
+        return true
+      }
+    }
+  }
+  
+  return false
+}
+
+function detectTypingRhythm(timestamps) {
+  if (timestamps.length < 5) return { suspicious: false, score: 0 }
+  
+  // Calculate intervals between typing events
+  const intervals = []
+  for (let i = 1; i < timestamps.length; i++) {
+    intervals.push(timestamps[i] - timestamps[i - 1])
+  }
+  
+  // Check for too-consistent intervals (bot behavior)
+  const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length
+  let consistentIntervals = 0
+  
+  intervals.forEach(interval => {
+    if (Math.abs(interval - avgInterval) < 50) { // Within 50ms = very consistent
+      consistentIntervals++
+    }
+  })
+  
+  const consistencyRatio = consistentIntervals / intervals.length
+  
+  return {
+    suspicious: consistencyRatio > 0.8 && avgInterval < 200, // 80% consistent + very fast
+    score: consistencyRatio > 0.8 ? 15 : (consistencyRatio > 0.6 ? 5 : 0)
+  }
+}
+
 // Cooldown tracking for rate-limited users
 const userCooldowns = new Map() // socketId -> { endTime, messageCount }
 
@@ -186,6 +267,12 @@ app.prepare().then(() => {
   const typingSpamMetrics = new Map() // Track typing events by IP
   const TYPING_RATE_LIMIT = 50 // Max typing events per window (increased)
   const TYPING_WINDOW_SECONDS = 10 // Time window for typing rate limit
+  
+  // Advanced bot detection
+  const botDetectionMetrics = new Map() // Track sophisticated bot patterns by IP
+  const SIMILARITY_THRESHOLD = 0.7 // How similar content needs to be to flag as bot
+  const PATTERN_WINDOW_SECONDS = 120 // 2 minute window for pattern analysis
+  const BOT_SCORE_THRESHOLD = 50 // Cumulative bot score before action
   
   // Typing timeout system
   const TYPING_TIMEOUT_MS = 60000 // 1 minute timeout
@@ -705,12 +792,33 @@ app.prepare().then(() => {
         typingSpamMetrics.set(userIP, typingData)
       }
       
-      // Clean old typing events outside the window
-      const typingWindowStart = currentTime - (TYPING_WINDOW_SECONDS * 1000)
-      typingData.events = typingData.events.filter(event => event > typingWindowStart)
+      // Track advanced bot patterns by IP
+      let botData = botDetectionMetrics.get(userIP)
+      if (!botData) {
+        botData = { 
+          contents: [], 
+          timestamps: [], 
+          botScore: 0, 
+          lastBotCheck: 0,
+          warnings: 0
+        }
+        botDetectionMetrics.set(userIP, botData)
+      }
       
-      // Add current typing event
+      // Clean old data outside windows
+      const typingWindowStart = currentTime - (TYPING_WINDOW_SECONDS * 1000)
+      const patternWindowStart = currentTime - (PATTERN_WINDOW_SECONDS * 1000)
+      
+      typingData.events = typingData.events.filter(event => event > typingWindowStart)
+      botData.contents = botData.contents.filter((_, i) => botData.timestamps[i] > patternWindowStart)
+      botData.timestamps = botData.timestamps.filter(ts => ts > patternWindowStart)
+      
+      // Add current data
       typingData.events.push(currentTime)
+      if (content && content.length > 2) { // Only track substantial content
+        botData.contents.push(content)
+        botData.timestamps.push(currentTime)
+      }
       
       // Check if exceeding typing rate limit (only apply severe penalties for extreme spam)
       if (typingData.events.length > TYPING_RATE_LIMIT * 3) { // 150+ events in 10s = bot behavior
@@ -756,6 +864,124 @@ app.prepare().then(() => {
         })
         
         typingData.lastWarning = currentTime
+      }
+      
+      // Advanced bot detection algorithms
+      if (content && botData.contents.length >= 3) {
+        let currentBotScore = 0
+        
+        // 1. Content similarity detection for slight variations
+        const recentContents = botData.contents.slice(-5) // Check last 5 messages
+        for (let i = 0; i < recentContents.length - 1; i++) {
+          for (let j = i + 1; j < recentContents.length; j++) {
+            const similarity = calculateStringSimilarity(recentContents[i], recentContents[j])
+            if (similarity > SIMILARITY_THRESHOLD) {
+              currentBotScore += Math.floor(similarity * 10) // 7-10 points for similar content
+            }
+          }
+        }
+        
+        // 2. Scrolling pattern detection
+        if (detectScrollingPattern(botData.contents.slice(-10))) {
+          currentBotScore += 20 // High score for scrolling patterns
+          console.log(`🤖 Scrolling pattern detected from IP ${userIP}`)
+        }
+        
+        // 3. Typing rhythm analysis
+        const rhythmAnalysis = detectTypingRhythm(botData.timestamps.slice(-10))
+        if (rhythmAnalysis.suspicious) {
+          currentBotScore += rhythmAnalysis.score
+          console.log(`🤖 Suspicious typing rhythm from IP ${userIP}, score: ${rhythmAnalysis.score}`)
+        }
+        
+        // 4. Length consistency check (bots often have very consistent message lengths)
+        if (botData.contents.length >= 5) {
+          const lengths = botData.contents.slice(-5).map(c => c.length)
+          const avgLength = lengths.reduce((a, b) => a + b, 0) / lengths.length
+          let consistentLengths = 0
+          
+          lengths.forEach(len => {
+            if (Math.abs(len - avgLength) <= 2) { // Within 2 characters = very consistent
+              consistentLengths++
+            }
+          })
+          
+          if (consistentLengths >= 4) { // 4/5 messages same length
+            currentBotScore += 10
+          }
+        }
+        
+        // Update cumulative bot score
+        botData.botScore += currentBotScore
+        
+        // Progressive penalties based on bot score
+        if (botData.botScore >= BOT_SCORE_THRESHOLD) {
+          console.log(`🚫 Advanced bot detected from IP ${userIP}, total score: ${botData.botScore}`)
+          
+          // First offense: Temporary ban
+          if (botData.warnings === 0) {
+            const cooldownDuration = 300 * 1000 // 5 minute cooldown
+            userCooldowns.set(socket.id, {
+              endTime: currentTime + cooldownDuration,
+              messageCount: 1
+            })
+            
+            ipCooldowns.set(userIP, {
+              endTime: currentTime + cooldownDuration,
+              reason: 'advanced_bot_detection'
+            })
+            
+            socket.emit('rate_limit_cooldown', {
+              message: `Advanced bot behavior detected! Temporary ban for 5 minutes.`,
+              remainingTime: 300,
+              totalViolations: 1
+            })
+            
+            botData.warnings = 1
+            
+            // Send admin notification
+            const adminMsg = `🤖 ADVANCED BOT DETECTED: IP ${userIP}, Score: ${botData.botScore}, User: ${username} - 5min temp ban applied`
+            sendAdminMessage(adminMsg)
+            
+          } else {
+            // Repeat offense: Permanent IP ban
+            bannedIPs.add(userIP)
+            console.log(`🚫 Permanent ban applied to repeat bot offender IP: ${userIP}`)
+            
+            socket.emit('message', {
+              id: Date.now() + Math.random(),
+              username: 'System',
+              content: `⛔ Connection terminated - Advanced bot behavior detected`,
+              timestamp: new Date()
+            })
+            
+            // Send admin notification
+            const adminMsg = `🚫 PERMANENT BAN: IP ${userIP} banned for repeated advanced bot behavior. Score: ${botData.botScore}, User: ${username}`
+            sendAdminMessage(adminMsg)
+            
+            socket.disconnect(true)
+            return
+          }
+        } else if (botData.botScore >= BOT_SCORE_THRESHOLD * 0.7) {
+          // Warning at 70% of threshold
+          if (currentTime - botData.lastBotCheck > 60000) { // Only warn once per minute
+            socket.emit('message', {
+              id: Date.now() + Math.random(),
+              username: 'System',
+              content: `⚠ Suspicious activity detected. Please verify you are human.`,
+              timestamp: new Date()
+            })
+            
+            botData.lastBotCheck = currentTime
+            console.log(`⚠ Bot warning sent to IP ${userIP}, score: ${botData.botScore}/${BOT_SCORE_THRESHOLD}`)
+          }
+        }
+        
+        // Decay bot score over time to allow for false positives
+        if (currentTime - botData.lastBotCheck > 300000) { // Every 5 minutes
+          botData.botScore = Math.max(0, botData.botScore - 5)
+          botData.lastBotCheck = currentTime
+        }
       }
       
       if (content) {
