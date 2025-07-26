@@ -642,14 +642,22 @@ export default function TerminalChat() {
         cryptLevel={username === 'NEURALNODE' || neuralNodePresent ? 4 : 0} 
       />
       
-      {/* User Count Dashboard */}
-      <div className="fixed top-4 right-4 z-30 bg-black/80 backdrop-blur-sm rounded-lg border border-terminal-rust/50 p-3">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-terminal-rust animate-pulse"></div>
-          <span className="text-terminal-rust text-sm font-mono">
-            {userCount} {userCount === 1 ? 'user' : 'users'}
-          </span>
+      {/* User Count Dashboard & Support */}
+      <div className="fixed top-4 right-4 z-30 flex flex-col gap-2">
+        <div className="bg-black/80 backdrop-blur-sm rounded-lg border border-terminal-rust/50 p-3">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-terminal-rust animate-pulse"></div>
+            <span className="text-terminal-rust text-sm font-mono">
+              {userCount} {userCount === 1 ? 'user' : 'users'}
+            </span>
+          </div>
         </div>
+        <button
+          onClick={() => router.push('/support')}
+          className="bg-terminal-amber/90 text-black backdrop-blur-sm rounded-lg border border-terminal-amber p-2 hover:bg-terminal-amber transition-colors text-xs font-mono font-bold"
+        >
+          DONATE
+        </button>
       </div>
 
       {/* Rate Limit Cooldown Popup */}

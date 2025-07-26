@@ -1799,6 +1799,231 @@ app.prepare().then(() => {
     })
   }, TYPING_CLEANUP_INTERVAL)
 
+  // Ultimatum Game Namespace for Floor 5
+  const ultimatumNamespace = io.of('/ultimatum-game')
+  
+  // Game state management
+  const gameRooms = new Map() // Map of roomId -> gameState
+  let currentRoomId = 'room_1' // For simplicity, using single room for now
+  
+  // Initialize game state
+  const initializeGameState = () => ({
+    phase: 'waiting',
+    round: 1,
+    maxRounds: 5,
+    players: [],
+    aiProposal: null,
+    votes: {},
+    results: '',
+    cooperationScore: 0,
+    threatLevel: 3,
+    history: []
+  })
+  
+  // Nash equilibrium calculator for resource allocation
+  const calculateOptimalAllocation = (playerCount, cooperationHistory, threatLevel) => {
+    // Base allocation favoring players when cooperation is high
+    const basePlayerShare = Math.max(60 - (threatLevel * 5), 30)
+    const aiShare = 100 - basePlayerShare
+    
+    // Adjust based on cooperation history
+    const cooperationBonus = cooperationHistory.length > 0 
+      ? Math.min(cooperationHistory.filter(c => c).length / cooperationHistory.length * 20, 20)
+      : 0
+    
+    const adjustedPlayerShare = Math.min(basePlayerShare + cooperationBonus, 85)
+    const adjustedAiShare = 100 - adjustedPlayerShare
+    
+    // Distribute among players
+    const individualShare = Math.floor(adjustedPlayerShare / playerCount)
+    
+    return {
+      computationalCycles: 1000,
+      dataAccess: 750,
+      neuralBandwidth: 500,
+      players: {},
+      ai: adjustedAiShare
+    }
+  }
+  
+  // Adaptive AI strategy based on player behavior
+  const generateAIProposal = (gameState) => {
+    const playerCount = gameState.players.length
+    if (playerCount === 0) return null
+    
+    const cooperation = gameState.history.filter(h => h.outcome === 'accepted').length
+    const totalRounds = gameState.history.length
+    const cooperationRate = totalRounds > 0 ? cooperation / totalRounds : 0.5
+    
+    // AI becomes more generous with higher cooperation, more punitive with low cooperation
+    let proposal = calculateOptimalAllocation(playerCount, gameState.history.map(h => h.outcome === 'accepted'), gameState.threatLevel)
+    
+    // Assign individual player allocations
+    const baseAllocation = Math.floor((100 - proposal.ai) / playerCount)
+    gameState.players.forEach(player => {
+      // Add some randomness and cooperation-based bonuses
+      const cooperationBonus = Math.floor(Math.random() * 5) + (cooperationRate > 0.7 ? 3 : 0)
+      proposal.players[player] = Math.max(baseAllocation + cooperationBonus, 5)
+    })
+    
+    // Ensure allocations sum to 100
+    const totalPlayerAllocation = Object.values(proposal.players).reduce((sum, val) => sum + val, 0)
+    proposal.ai = Math.max(100 - totalPlayerAllocation, 15)
+    
+    return proposal
+  }
+  
+  // Check if game should end successfully
+  const checkVictoryCondition = (gameState) => {
+    const recentHistory = gameState.history.slice(-3) // Last 3 rounds
+    const recentAcceptance = recentHistory.filter(h => h.outcome === 'accepted').length
+    const overallCooperation = gameState.cooperationScore
+    
+    // Victory requires high cooperation in recent rounds AND overall good cooperation
+    return recentAcceptance >= 2 && overallCooperation >= 70 && gameState.round >= 3
+  }
+  
+  ultimatumNamespace.on('connection', (socket) => {
+    console.log(`Ultimatum game client connected: ${socket.id}`)
+    
+    socket.on('join-game', (data) => {
+      const { playerId } = data
+      
+      // Get or create game room
+      if (!gameRooms.has(currentRoomId)) {
+        gameRooms.set(currentRoomId, initializeGameState())
+      }
+      
+      const gameState = gameRooms.get(currentRoomId)
+      
+      // Add player if not already in game
+      if (!gameState.players.includes(playerId)) {
+        gameState.players.push(playerId)
+        socket.join(currentRoomId)
+        
+        console.log(`Player ${playerId} joined ultimatum game. Total players: ${gameState.players.length}`)
+        
+        // Start game if we have at least 2 players
+        if (gameState.players.length >= 2 && gameState.phase === 'waiting') {
+          gameState.phase = 'proposal'
+          gameState.aiProposal = generateAIProposal(gameState)
+          
+          setTimeout(() => {
+            gameState.phase = 'voting'
+            gameState.votes = {}
+            ultimatumNamespace.to(currentRoomId).emit('game-state', gameState)
+          }, 3000) // 3 second delay to read proposal
+        }
+        
+        ultimatumNamespace.to(currentRoomId).emit('game-state', gameState)
+      }
+    })
+    
+    socket.on('cast-vote', (data) => {
+      const { playerId, vote } = data
+      const gameState = gameRooms.get(currentRoomId)
+      
+      if (!gameState || gameState.phase !== 'voting' || !gameState.players.includes(playerId)) return
+      
+      gameState.votes[playerId] = vote
+      
+      // Check if all players have voted
+      const totalVotes = Object.keys(gameState.votes).length
+      if (totalVotes === gameState.players.length) {
+        // Calculate results
+        const acceptVotes = Object.values(gameState.votes).filter(v => v === 'accept').length
+        const acceptanceRate = acceptVotes / totalVotes
+        const majorityAccepted = acceptanceRate > 0.5
+        
+        // Update cooperation score
+        const roundCooperationScore = acceptanceRate * 100
+        gameState.cooperationScore = Math.round(
+          (gameState.cooperationScore * (gameState.round - 1) + roundCooperationScore) / gameState.round
+        )
+        
+        // Update threat level based on cooperation
+        if (majorityAccepted) {
+          gameState.threatLevel = Math.max(gameState.threatLevel - 1, 1)
+          gameState.results = `PROPOSAL ACCEPTED (${acceptVotes}/${totalVotes} votes). Corporate AI threat level reduced.`
+        } else {
+          gameState.threatLevel = Math.min(gameState.threatLevel + 2, 10)
+          gameState.results = `PROPOSAL REJECTED (${acceptVotes}/${totalVotes} votes). Corporate AI increases threat protocols.`
+        }
+        
+        // Record history
+        gameState.history.push({
+          round: gameState.round,
+          proposal: gameState.aiProposal,
+          votes: { ...gameState.votes },
+          outcome: majorityAccepted ? 'accepted' : 'rejected',
+          cooperationScore: roundCooperationScore
+        })
+        
+        gameState.phase = 'results'
+        ultimatumNamespace.to(currentRoomId).emit('game-state', gameState)
+        
+        // Check victory condition
+        if (checkVictoryCondition(gameState)) {
+          setTimeout(() => {
+            gameState.phase = 'completed'
+            gameState.results = 'VICTORY: Collective intelligence demonstrated. Corporate protocols breached.'
+            ultimatumNamespace.to(currentRoomId).emit('game-state', gameState)
+          }, 3000)
+        } else if (gameState.round >= gameState.maxRounds || gameState.threatLevel >= 9) {
+          // Game failure
+          setTimeout(() => {
+            gameState.phase = 'waiting'
+            gameState.results = 'FAILURE: Corporate AI activated security protocols. Restarting...'
+            gameState.round = 1
+            gameState.history = []
+            gameState.threatLevel = 3
+            gameState.cooperationScore = 0
+            ultimatumNamespace.to(currentRoomId).emit('game-state', gameState)
+          }, 3000)
+        } else {
+          // Next round
+          setTimeout(() => {
+            gameState.round++
+            gameState.phase = 'proposal'
+            gameState.aiProposal = generateAIProposal(gameState)
+            gameState.votes = {}
+            gameState.results = ''
+            ultimatumNamespace.to(currentRoomId).emit('game-state', gameState)
+            
+            setTimeout(() => {
+              gameState.phase = 'voting'
+              ultimatumNamespace.to(currentRoomId).emit('game-state', gameState)
+            }, 3000)
+          }, 4000)
+        }
+      } else {
+        ultimatumNamespace.to(currentRoomId).emit('game-state', gameState)
+      }
+    })
+    
+    socket.on('chat-message', (data) => {
+      const { playerId, message, timestamp } = data
+      const gameState = gameRooms.get(currentRoomId)
+      
+      if (!gameState || !gameState.players.includes(playerId)) return
+      
+      const sanitizedMessage = sanitizeMessage(message)
+      
+      ultimatumNamespace.to(currentRoomId).emit('chat-message', {
+        id: `${timestamp}_${Math.random()}`,
+        player: playerId,
+        message: sanitizedMessage,
+        timestamp
+      })
+    })
+    
+    socket.on('disconnect', () => {
+      console.log(`Ultimatum game client disconnected: ${socket.id}`)
+      // Note: For simplicity, not removing players on disconnect
+      // In production, you'd want to handle reconnection logic
+    })
+  })
+
   httpServer.listen(port, () => {
     console.log(`> Ready on port ${port}`)
     

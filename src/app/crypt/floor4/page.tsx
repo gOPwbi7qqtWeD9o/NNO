@@ -121,10 +121,10 @@ export default function CryptFloor4() {
               RETURN TO SURFACE
             </button>
             <button
-              disabled
-              className="bg-gray-700 text-gray-500 px-8 py-3 font-mono cursor-not-allowed border border-gray-600"
+              onClick={() => router.push('/crypt/floor5')}
+              className="bg-red-600 text-white px-8 py-3 font-mono hover:bg-red-500 transition-colors border border-red-400"
             >
-              DESCEND TO FLOOR 05 [LOCKED]
+              DESCEND TO FLOOR 05
             </button>
           </div>
 

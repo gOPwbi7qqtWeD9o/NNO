@@ -381,10 +381,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                       return
                     }
                     
-                    // 3. Get current player state for validation
-                    const currentTime = playerRef.current?.getCurrentTime?.() || 0
-                    const duration = playerRef.current?.getDuration?.() || videoDuration || 0
-                    
+                    // 3. Re-validate current player state
                     console.log('🎵 End validation:', {
                       currentTime: Math.floor(currentTime),
                       duration: Math.floor(duration),
