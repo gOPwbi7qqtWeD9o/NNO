@@ -184,7 +184,7 @@ app.prepare().then(() => {
   
   // Typing spam detection
   const typingSpamMetrics = new Map() // Track typing events by IP
-  const TYPING_RATE_LIMIT = 20 // Max typing events per window
+  const TYPING_RATE_LIMIT = 50 // Max typing events per window (increased)
   const TYPING_WINDOW_SECONDS = 10 // Time window for typing rate limit
 
   // Connection rate limiting to prevent script reconnection spam (more lenient)
@@ -688,6 +688,12 @@ app.prepare().then(() => {
       
       const currentTime = Date.now()
       
+      // Get client IP for rate limiting
+      const userIP = socket.handshake.headers['x-forwarded-for'] || 
+                     socket.handshake.headers['x-real-ip'] || 
+                     socket.conn.remoteAddress || 
+                     'unknown'
+      
       // Track typing spam by IP
       let typingData = typingSpamMetrics.get(userIP)
       if (!typingData) {
@@ -702,54 +708,50 @@ app.prepare().then(() => {
       // Add current typing event
       typingData.events.push(currentTime)
       
-      // Check if exceeding typing rate limit
-      if (typingData.events.length > TYPING_RATE_LIMIT) {
-        // Only send warning once per minute to avoid spam
-        if (currentTime - typingData.lastWarning > 60000) {
-          console.log(`❌ Typing spam detected from IP ${userIP}: ${typingData.events.length}/${TYPING_RATE_LIMIT} events`)
-          
-          socket.emit('message', {
-            id: Date.now() + Math.random(),
-            username: 'System',
-            content: `⚠ Typing frequency exceeded. Reduce typing speed or face timeout.`,
-            timestamp: new Date()
-          })
-          
-          typingData.lastWarning = currentTime
-        }
+      // Check if exceeding typing rate limit (only apply severe penalties for extreme spam)
+      if (typingData.events.length > TYPING_RATE_LIMIT * 3) { // 150+ events in 10s = bot behavior
+        console.log(`❌ Extreme typing spam detected from IP ${userIP}: ${typingData.events.length} events`)
         
-        // If severely exceeding (2x limit), apply cooldown
-        if (typingData.events.length > TYPING_RATE_LIMIT * 2) {
-          const cooldownDuration = 120 * 1000 // 2 minute cooldown
-          userCooldowns.set(socket.id, {
-            endTime: currentTime + cooldownDuration,
-            messageCount: 1
-          })
-          
-          ipCooldowns.set(userIP, {
-            endTime: currentTime + cooldownDuration,
-            reason: 'typing_spam'
-          })
-          
-          socket.emit('rate_limit_cooldown', {
-            message: `Typing spam detected! Cooldown active for 120 seconds.`,
-            remainingTime: 120,
-            totalViolations: 1
-          })
-          
-          socket.emit('message', {
-            id: Date.now() + Math.random(),
-            username: 'System',
-            content: `⚠ TYPING SPAM FILTER TRIGGERED - IP cooldown active`,
-            timestamp: new Date()
-          })
-          
-          console.log(`❌ Typing spam cooldown applied to IP ${userIP}`)
-          return
-        }
+        const cooldownDuration = 120 * 1000 // 2 minute cooldown
+        userCooldowns.set(socket.id, {
+          endTime: currentTime + cooldownDuration,
+          messageCount: 1
+        })
         
-        // Don't broadcast typing if over limit
+        ipCooldowns.set(userIP, {
+          endTime: currentTime + cooldownDuration,
+          reason: 'typing_spam'
+        })
+        
+        socket.emit('rate_limit_cooldown', {
+          message: `Extreme typing spam detected! Cooldown active for 120 seconds.`,
+          remainingTime: 120,
+          totalViolations: 1
+        })
+        
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `⚠ TYPING SPAM FILTER TRIGGERED - Extreme bot behavior detected`,
+          timestamp: new Date()
+        })
+        
+        console.log(`❌ Typing spam cooldown applied to IP ${userIP}`)
         return
+      }
+      
+      // Warn for high typing frequency but still allow it
+      if (typingData.events.length > TYPING_RATE_LIMIT && currentTime - typingData.lastWarning > 60000) {
+        console.log(`⚠ High typing frequency from IP ${userIP}: ${typingData.events.length}/${TYPING_RATE_LIMIT} events`)
+        
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `⚠ High typing frequency detected. Please moderate your typing speed.`,
+          timestamp: new Date()
+        })
+        
+        typingData.lastWarning = currentTime
       }
       
       if (content) {
