@@ -112,9 +112,19 @@ export default function CryptEntrance() {
                   type="text"
                   value={neuralKey}
                   onChange={(e) => setNeuralKey(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isProcessing && neuralKey.trim()) {
+                      e.preventDefault()
+                      handleSubmit(e as any)
+                    }
+                  }}
                   className="w-full bg-black border border-terminal-dim text-terminal-text font-mono p-3 focus:border-terminal-amber focus:outline-none"
                   placeholder="Enter extracted neural key..."
                   disabled={isProcessing}
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck="false"
                 />
               </div>
 

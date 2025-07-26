@@ -175,6 +175,8 @@ app.prepare().then(() => {
   
   // Enhanced spam detection
   const userSpamMetrics = new Map() // Track character counts and repeated content
+  const ipSpamMetrics = new Map() // Track spam metrics by IP address
+  const ipCooldowns = new Map() // Track IP-based cooldowns that persist after disconnect
   const MAX_CHARS_PER_WINDOW = 500 // Max characters per time window
   const SPAM_WINDOW_SECONDS = 30 // Time window for spam detection
   const REPEATED_CONTENT_THRESHOLD = 3 // How many times same content triggers spam
@@ -291,8 +293,24 @@ app.prepare().then(() => {
                      socket.conn.remoteAddress || 
                      'unknown'
     
-    // Check connection rate limiting
     const currentTime = Date.now()
+    
+    // Check if IP is under spam cooldown
+    const ipCooldown = ipCooldowns.get(clientIP)
+    if (ipCooldown && currentTime < ipCooldown.endTime) {
+      const remainingTime = Math.ceil((ipCooldown.endTime - currentTime) / 1000)
+      console.log(`❌ IP ${clientIP} blocked due to spam cooldown: ${remainingTime}s remaining`)
+      socket.emit('message', {
+        id: Date.now() + Math.random(),
+        username: 'System',
+        content: `Access denied. IP under spam protection cooldown for ${remainingTime} more seconds.`,
+        timestamp: new Date()
+      })
+      setTimeout(() => socket.disconnect(), 500)
+      return
+    }
+    
+    // Check connection rate limiting
     if (!connectionAttempts.has(clientIP)) {
       connectionAttempts.set(clientIP, [])
     }
@@ -459,74 +477,113 @@ app.prepare().then(() => {
           userSpamMetrics.set(username, spamMetrics)
         }
         
-        // Clean old messages outside the spam window
+        // Also track by IP to prevent rejoin spam
+        let ipSpamData = ipSpamMetrics.get(userIP)
+        if (!ipSpamData) {
+          ipSpamData = {
+            messages: [],
+            contentHistory: [],
+            totalChars: 0
+          }
+          ipSpamMetrics.set(userIP, ipSpamData)
+        }
+        
+        // Clean old messages outside the spam window for both user and IP
         const spamWindowStart = currentTime - (SPAM_WINDOW_SECONDS * 1000)
         spamMetrics.messages = spamMetrics.messages.filter(msg => msg.timestamp > spamWindowStart)
         spamMetrics.contentHistory = spamMetrics.contentHistory.filter(content => content.timestamp > spamWindowStart)
+        ipSpamData.messages = ipSpamData.messages.filter(msg => msg.timestamp > spamWindowStart)
+        ipSpamData.contentHistory = ipSpamData.contentHistory.filter(content => content.timestamp > spamWindowStart)
         
-        // Recalculate total characters in current window
+        // Recalculate total characters in current window for both user and IP
         spamMetrics.totalChars = spamMetrics.messages.reduce((sum, msg) => sum + msg.length, 0)
+        ipSpamData.totalChars = ipSpamData.messages.reduce((sum, msg) => sum + msg.length, 0)
         
-        // Check character spam (too many characters in time window)
-        if (spamMetrics.totalChars + messageLength > MAX_CHARS_PER_WINDOW) {
-          console.log(`❌ Character spam detected from ${username}: ${spamMetrics.totalChars + messageLength}/${MAX_CHARS_PER_WINDOW} chars`)
+        // Check character spam (check both user and IP limits)
+        const userCharLimit = spamMetrics.totalChars + messageLength > MAX_CHARS_PER_WINDOW
+        const ipCharLimit = ipSpamData.totalChars + messageLength > MAX_CHARS_PER_WINDOW
+        
+        if (userCharLimit || ipCharLimit) {
+          console.log(`❌ Character spam detected from ${username} (IP: ${userIP}): user=${spamMetrics.totalChars + messageLength}/${MAX_CHARS_PER_WINDOW}, ip=${ipSpamData.totalChars + messageLength}/${MAX_CHARS_PER_WINDOW}`)
           
-          const cooldownDuration = 60 * 1000 // 60 second cooldown for character spam
+          const cooldownDuration = 300 * 1000 // 5 minute cooldown for character spam
+          
+          // Set cooldown for both socket and IP
           userCooldowns.set(socket.id, {
             endTime: currentTime + cooldownDuration,
             messageCount: 1
           })
           
+          ipCooldowns.set(userIP, {
+            endTime: currentTime + cooldownDuration,
+            reason: 'character_spam'
+          })
+          
           socket.emit('rate_limit_cooldown', {
-            message: `Character spam detected! Cooldown active for 60 seconds.`,
-            remainingTime: 60,
+            message: `Character spam detected! IP cooldown active for 300 seconds.`,
+            remainingTime: 300,
             totalViolations: 1
           })
           
           socket.emit('message', {
             id: Date.now() + Math.random(),
             username: 'System',
-            content: `⚠ SPAM FILTER TRIGGERED - Excessive character transmission detected`,
+            content: `⚠ SPAM FILTER TRIGGERED - Excessive character transmission detected. IP blocked.`,
             timestamp: new Date()
           })
           
           return
         }
         
-        // Check repeated content spam
-        const similarContent = spamMetrics.contentHistory.filter(content => 
+        // Check repeated content spam (check both user and IP)
+        const userRepeatedContent = spamMetrics.contentHistory.filter(content => 
           content.text.toLowerCase() === messageContent.toLowerCase()
         ).length
         
-        if (similarContent >= REPEATED_CONTENT_THRESHOLD) {
-          console.log(`❌ Repeated content spam detected from ${username}: "${messageContent.substring(0, 50)}..."`)
+        const ipRepeatedContent = ipSpamData.contentHistory.filter(content => 
+          content.text.toLowerCase() === messageContent.toLowerCase()
+        ).length
+        
+        if (userRepeatedContent >= REPEATED_CONTENT_THRESHOLD || ipRepeatedContent >= REPEATED_CONTENT_THRESHOLD) {
+          console.log(`❌ Repeated content spam detected from ${username} (IP: ${userIP}): "${messageContent.substring(0, 50)}..." user=${userRepeatedContent}, ip=${ipRepeatedContent}`)
           
-          const cooldownDuration = 120 * 1000 // 2 minute cooldown for repeated content
+          const cooldownDuration = 600 * 1000 // 10 minute cooldown for repeated content spam
+          
+          // Set cooldown for both socket and IP
           userCooldowns.set(socket.id, {
             endTime: currentTime + cooldownDuration,
             messageCount: 1
           })
           
+          ipCooldowns.set(userIP, {
+            endTime: currentTime + cooldownDuration,
+            reason: 'repeated_content_spam'
+          })
+          
           socket.emit('rate_limit_cooldown', {
-            message: `Repeated content spam detected! Cooldown active for 120 seconds.`,
-            remainingTime: 120,
+            message: `Repeated content spam detected! IP cooldown active for 600 seconds.`,
+            remainingTime: 600,
             totalViolations: 1
           })
           
           socket.emit('message', {
             id: Date.now() + Math.random(),
             username: 'System',
-            content: `⚠ SPAM FILTER TRIGGERED - Repeated transmission pattern detected`,
+            content: `⚠ SPAM FILTER TRIGGERED - Repeated transmission pattern detected. IP blocked.`,
             timestamp: new Date()
           })
           
           return
         }
         
-        // Add this message to spam metrics
+        // Add this message to spam metrics for both user and IP
         spamMetrics.messages.push({ length: messageLength, timestamp: currentTime })
         spamMetrics.contentHistory.push({ text: messageContent, timestamp: currentTime })
         spamMetrics.totalChars += messageLength
+        
+        ipSpamData.messages.push({ length: messageLength, timestamp: currentTime })
+        ipSpamData.contentHistory.push({ text: messageContent, timestamp: currentTime })
+        ipSpamData.totalChars += messageLength
       }
       
       // Rate limiting check
