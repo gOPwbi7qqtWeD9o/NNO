@@ -1300,7 +1300,7 @@ app.prepare().then(() => {
       }
       io.emit('message', systemMessage)
       
-      console.log(`Media stopped manually by ${username}`)
+      console.log(`🛑 MANUAL STOP TRIGGER - Media stopped manually by ${username}`)
       
       // Play next song in queue
       playNextInQueue()
@@ -1348,7 +1348,7 @@ app.prepare().then(() => {
         }
         io.emit('message', skipMessage)
         
-        console.log(`Video skipped by vote: ${currentVotes}/${requiredVotes}`)
+        console.log(`🗳️ VOTE SKIP TRIGGER - Video skipped by vote: ${currentVotes}/${requiredVotes}`)
         
         // Play next song in queue
         playNextInQueue()
@@ -1357,9 +1357,20 @@ app.prepare().then(() => {
 
     // Handle video end (when YouTube video finishes naturally)
     socket.on('media_ended', (data) => {
-      const { username } = data
+      const { username, currentTime: clientCurrentTime, duration: clientDuration, completionPercentage, timeFromEnd, videoId } = data
       const user = connectedUsers.get(socket.id)
       const currentTime = Date.now()
+      
+      console.log('🎵 MEDIA_ENDED received with client timing data:', {
+        username,
+        videoId,
+        clientCurrentTime,
+        clientDuration,
+        completionPercentage,
+        timeFromEnd,
+        serverVideoId: mediaPlayerState.videoId,
+        serverPlayDuration: mediaPlayerState.startTime ? Math.floor((currentTime - mediaPlayerState.startTime) / 1000) : 'unknown'
+      })
       
       // Validate user and media state
       if (!user || !mediaPlayerState.videoId) return

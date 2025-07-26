@@ -430,8 +430,23 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                     }, 15000)
                     
                     if (socket) {
-                      console.log('🎵 Emitting media_ended event')
-                      socket.emit('media_ended', { username })
+                      console.log('🎵 Emitting media_ended event with timing data:', {
+                        currentTime: Math.floor(currentTime),
+                        duration: Math.floor(duration),
+                        videoDuration: Math.floor(videoDuration),
+                        completionPercentage: Math.floor((currentTime / duration) * 100),
+                        timeFromEnd: Math.floor(duration - currentTime),
+                        username,
+                        videoId
+                      })
+                      socket.emit('media_ended', { 
+                        username,
+                        currentTime: Math.floor(currentTime),
+                        duration: Math.floor(duration),
+                        completionPercentage: Math.floor((currentTime / duration) * 100),
+                        timeFromEnd: Math.floor(duration - currentTime),
+                        videoId
+                      })
                     }
                   }
                 },
