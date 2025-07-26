@@ -237,6 +237,13 @@ app.prepare().then(() => {
   const CONNECTION_HEALTH_CHECK_INTERVAL = 120000 // 2 minutes
   const CONNECTION_TIMEOUT_THRESHOLD = 300000    // 5 minutes of inactivity
   
+  // Media player anti-skip protection
+  const videoEndCooldowns = new Map() // Track recent end events per video
+  const userEndEventLimiter = new Map() // Track end events per user
+  const VIDEO_END_COOLDOWN_MS = 30000 // 30 seconds between end events for same video
+  const USER_END_EVENT_LIMIT = 3 // Max end events per user per hour
+  const USER_END_EVENT_WINDOW = 3600000 // 1 hour
+  
   // Shared media player state
   let mediaPlayerState = {
     videoId: '',
@@ -1351,29 +1358,61 @@ app.prepare().then(() => {
     socket.on('media_ended', (data) => {
       const { username } = data
       const user = connectedUsers.get(socket.id)
+      const currentTime = Date.now()
       
       // Validate user and media state
       if (!user || !mediaPlayerState.videoId) return
       
-      // Rate limit media_ended events - only allow one per user per 10 seconds
-      const userIP = socket.handshake.address
-      const rateLimitKey = `media_ended:${userIP}`
+      // Enhanced anti-spam protection: Per-video cooldown
+      const videoKey = `${mediaPlayerState.videoId}:${mediaPlayerState.startTime}`
+      const lastVideoEndTime = videoEndCooldowns.get(videoKey)
       
+      if (lastVideoEndTime && (currentTime - lastVideoEndTime) < VIDEO_END_COOLDOWN_MS) {
+        console.log(`Media ended event rejected - video cooldown active (${Math.floor((VIDEO_END_COOLDOWN_MS - (currentTime - lastVideoEndTime))/1000)}s remaining) for ${username}`)
+        return
+      }
+      
+      // Enhanced anti-spam protection: Per-user rate limiting
+      const userIP = socket.handshake.address
+      const userEvents = userEndEventLimiter.get(userIP) || []
+      const recentEvents = userEvents.filter(time => (currentTime - time) < USER_END_EVENT_WINDOW)
+      
+      if (recentEvents.length >= USER_END_EVENT_LIMIT) {
+        console.log(`Media ended event rejected - user ${username} (${userIP}) exceeded hourly limit (${recentEvents.length}/${USER_END_EVENT_LIMIT})`)
+        return
+      }
+      
+      // Basic rate limiting for general protection
+      const rateLimitKey = `media_ended:${userIP}`
       if (!messageRateLimit.isAllowed(rateLimitKey)) {
         console.log(`Media ended event rate limited for ${username} (${userIP})`)
         return
       }
       
-      // Timing validation: video must have been playing for at least 30 seconds to end naturally
+      // Enhanced timing validation: video must have been playing for at least 60 seconds
       if (mediaPlayerState.startTime) {
-        const playDuration = Date.now() - mediaPlayerState.startTime
-        if (playDuration < 30000) { // Less than 30 seconds
-          console.log(`Media ended event rejected - video too short (${Math.floor(playDuration/1000)}s) reported by ${username}`)
+        const playDuration = currentTime - mediaPlayerState.startTime
+        if (playDuration < 60000) { // Less than 60 seconds (increased from 30)
+          console.log(`Media ended event rejected - insufficient play time (${Math.floor(playDuration/1000)}s) reported by ${username}`)
           return
         }
       }
       
-      console.log(`🎵 Video ended naturally (reported by ${username}), playing next in queue`)
+      // Additional validation: Check if this is too soon after the last media event
+      if (mediaPlayerState.lastUpdate) {
+        const timeSinceLastUpdate = currentTime - mediaPlayerState.lastUpdate
+        if (timeSinceLastUpdate < 10000) { // Less than 10 seconds since last media event
+          console.log(`Media ended event rejected - too soon after last media event (${Math.floor(timeSinceLastUpdate/1000)}s) reported by ${username}`)
+          return
+        }
+      }
+      
+      // Record this end event
+      videoEndCooldowns.set(videoKey, currentTime)
+      recentEvents.push(currentTime)
+      userEndEventLimiter.set(userIP, recentEvents)
+      
+      console.log(`🎵 Video ended naturally (validated - reported by ${username}), playing next in queue`)
       
       // Play next song in queue
       playNextInQueue()
@@ -1648,6 +1687,33 @@ app.prepare().then(() => {
       console.log(`Health check: Cleaned up ${staleConnections} stale connections. Active users: ${connectedUsers.size}`)
       // Emit updated user count
       io.emit('user_count', connectedUsers.size)
+    }
+    
+    // Clean up old video end cooldowns (older than 1 hour)
+    let cleanedVideoCooldowns = 0
+    for (const [videoKey, timestamp] of videoEndCooldowns.entries()) {
+      if ((now - timestamp) > 3600000) { // 1 hour
+        videoEndCooldowns.delete(videoKey)
+        cleanedVideoCooldowns++
+      }
+    }
+    
+    // Clean up old user end event records (older than window)
+    let cleanedUserEvents = 0
+    for (const [userIP, events] of userEndEventLimiter.entries()) {
+      const recentEvents = events.filter(time => (now - time) < USER_END_EVENT_WINDOW)
+      if (recentEvents.length !== events.length) {
+        if (recentEvents.length > 0) {
+          userEndEventLimiter.set(userIP, recentEvents)
+        } else {
+          userEndEventLimiter.delete(userIP)
+        }
+        cleanedUserEvents++
+      }
+    }
+    
+    if (cleanedVideoCooldowns > 0 || cleanedUserEvents > 0) {
+      console.log(`Cleanup: Removed ${cleanedVideoCooldowns} old video cooldowns, ${cleanedUserEvents} old user event records`)
     }
   }, CONNECTION_HEALTH_CHECK_INTERVAL)
 

@@ -55,6 +55,10 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
   const [shouldSync, setShouldSync] = useState(false)
   const [isUserSeeking, setIsUserSeeking] = useState(false)
   const [lastKnownTime, setLastKnownTime] = useState(0)
+  const [endEventCooldown, setEndEventCooldown] = useState(false)
+  const [videoDuration, setVideoDuration] = useState(0)
+  const [playerStateHistory, setPlayerStateHistory] = useState<number[]>([])
+  const lastEndEventTime = useRef<number>(0)
   const windowRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<any>(null) // YouTube Player API reference
 
@@ -116,6 +120,10 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setHasVoted(false) // Reset vote status for new video
       setIsUserSeeking(false) // Reset seeking state for new video
       setLastKnownTime(0) // Reset time tracking for new video
+      setEndEventCooldown(false) // Reset end event cooldown
+      setVideoDuration(0) // Reset duration tracking
+      setPlayerStateHistory([]) // Reset state history
+      lastEndEventTime.current = 0 // Reset end event time
       
       // Store sync information for time synchronization
       if (state.currentTime !== undefined && state.serverTime && state.startTime) {
@@ -145,6 +153,10 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setShouldSync(false)
       setIsUserSeeking(false) // Reset seeking state
       setLastKnownTime(0) // Reset time tracking
+      setEndEventCooldown(false) // Reset end event cooldown
+      setVideoDuration(0) // Reset duration tracking
+      setPlayerStateHistory([]) // Reset state history
+      lastEndEventTime.current = 0 // Reset end event time
     })
 
     // Listen for skip vote updates
@@ -274,21 +286,36 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                     }
                   }
 
-                  // Start tracking time for seek detection
+                  // Enhanced time tracking for better seek detection
                   const trackTime = () => {
                     if (playerRef.current && playerRef.current.getCurrentTime) {
                       try {
                         const currentTime = playerRef.current.getCurrentTime()
                         const duration = playerRef.current.getDuration()
                         
-                        // Detect if user is seeking (large jump in time)
+                        // Update duration if we have it
+                        if (duration && duration > 0 && videoDuration !== duration) {
+                          setVideoDuration(duration)
+                          console.log('🎵 Video duration updated:', Math.floor(duration), 'seconds')
+                        }
+                        
+                        // Enhanced seek detection with multiple criteria
                         const timeDiff = Math.abs(currentTime - lastKnownTime)
-                        if (timeDiff > 2 && lastKnownTime > 0) {
-                          console.log('🎯 User seeking detected:', timeDiff, 'seconds jump')
+                        const isLargeJump = timeDiff > 3 // Increased threshold
+                        const isBackwardSeek = currentTime < lastKnownTime - 2
+                        const isForwardSeek = currentTime > lastKnownTime + 5
+                        
+                        if ((isLargeJump || isBackwardSeek || isForwardSeek) && lastKnownTime > 0) {
+                          console.log('🎯 User seeking detected:', {
+                            timeDiff: Math.floor(timeDiff),
+                            from: Math.floor(lastKnownTime),
+                            to: Math.floor(currentTime),
+                            type: isBackwardSeek ? 'backward' : isForwardSeek ? 'forward' : 'large_jump'
+                          })
                           setIsUserSeeking(true)
                           
-                          // Reset seeking flag after a delay
-                          setTimeout(() => setIsUserSeeking(false), 1000)
+                          // Longer reset delay for seeking flag
+                          setTimeout(() => setIsUserSeeking(false), 3000)
                         }
                         
                         setLastKnownTime(currentTime)
@@ -298,8 +325,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                     }
                   }
 
-                  // Track time every 500ms
-                  const timeTracker = setInterval(trackTime, 500)
+                  // Track time more frequently for better detection
+                  const timeTracker = setInterval(trackTime, 250)
                   
                   // Store interval reference for cleanup
                   if (playerRef.current) {
@@ -307,29 +334,80 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                   }
                 },
                 onStateChange: (event: any) => {
+                  const now = Date.now()
                   console.log('🎵 YouTube player state changed:', event.data)
+                  
+                  // Track recent state changes to detect rapid transitions
+                  setPlayerStateHistory(prev => {
+                    const newHistory = [...prev, event.data].slice(-5) // Keep last 5 states
+                    return newHistory
+                  })
                   
                   // YT.PlayerState.ENDED = 0
                   if (event.data === 0) {
-                    // Check if this is a natural end or user seeking to end
-                    if (isUserSeeking) {
-                      console.log('🎯 User seeked to end, not advancing queue')
-                      setIsUserSeeking(false) // Reset flag
+                    console.log('🎵 ENDED state detected, validating...')
+                    
+                    // Multiple validation layers to prevent false triggers
+                    
+                    // 1. Cooldown check - prevent rapid end events
+                    if (endEventCooldown || (now - lastEndEventTime.current) < 10000) {
+                      console.log('🎯 End event blocked by cooldown')
                       return
                     }
-
-                    // Only advance if it's a natural video end
-                    const currentTime = playerRef.current?.getCurrentTime?.() || 0
-                    const duration = playerRef.current?.getDuration?.() || 0
                     
-                    // If we're within 2 seconds of the actual end, it's likely natural
-                    if (duration > 0 && (duration - currentTime) <= 2) {
-                      console.log('🎵 YouTube video ended naturally, advancing queue')
-                      if (socket) {
-                        socket.emit('media_ended', { username })
+                    // 2. Check if user was recently seeking
+                    if (isUserSeeking) {
+                      console.log('🎯 End event blocked - user was seeking')
+                      setIsUserSeeking(false)
+                      return
+                    }
+                    
+                    // 3. Get current player state for validation
+                    const currentTime = playerRef.current?.getCurrentTime?.() || 0
+                    const duration = playerRef.current?.getDuration?.() || videoDuration || 0
+                    
+                    console.log('🎵 End validation:', {
+                      currentTime: Math.floor(currentTime),
+                      duration: Math.floor(duration),
+                      timeFromEnd: Math.floor(duration - currentTime),
+                      videoDuration: Math.floor(videoDuration)
+                    })
+                    
+                    // 4. Strict duration validation - must be within 5 seconds of actual end
+                    if (duration > 0) {
+                      const timeFromEnd = duration - currentTime
+                      if (timeFromEnd > 5) {
+                        console.log(`🎯 End event blocked - too far from actual end (${Math.floor(timeFromEnd)}s remaining)`)
+                        return
                       }
                     } else {
-                      console.log('🎯 Video end event ignored (likely seeking), not advancing queue')
+                      console.log('🎯 End event blocked - no duration available for validation')
+                      return
+                    }
+                    
+                    // 5. Check for suspicious state patterns (rapid transitions)
+                    const recentStates = playerStateHistory.slice(-3)
+                    const hasRapidTransitions = recentStates.length >= 3 && 
+                      recentStates.some((state, index) => index > 0 && Math.abs(state - recentStates[index - 1]) > 2)
+                    
+                    if (hasRapidTransitions) {
+                      console.log('🎯 End event blocked - suspicious rapid state transitions detected')
+                      return
+                    }
+                    
+                    // 6. Final validation - set cooldown and emit
+                    console.log('✅ Video end validated - all checks passed')
+                    setEndEventCooldown(true)
+                    lastEndEventTime.current = now
+                    
+                    // Reset cooldown after 15 seconds
+                    setTimeout(() => {
+                      setEndEventCooldown(false)
+                    }, 15000)
+                    
+                    if (socket) {
+                      console.log('🎵 Emitting media_ended event')
+                      socket.emit('media_ended', { username })
                     }
                   }
                 },

@@ -77,14 +77,49 @@ export default function TerminalChat() {
   const [targetUsername, setTargetUsername] = useState('')
   const [adminMessages, setAdminMessages] = useState<Message[]>([])
   const [typingTimeoutRef, setTypingTimeoutRef] = useState<NodeJS.Timeout | null>(null)
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
+  const [newMessagesWhileScrolledUp, setNewMessagesWhileScrolledUp] = useState(0)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    setIsUserScrolledUp(false)
+    setNewMessagesWhileScrolledUp(0)
   }
 
+  // Only auto-scroll on new messages, not typing events
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, typingUsers])
+    // Only auto-scroll if user hasn't manually scrolled up
+    if (!isUserScrolledUp) {
+      scrollToBottom()
+    } else {
+      // User is scrolled up and new messages arrived
+      setNewMessagesWhileScrolledUp(prev => prev + 1)
+    }
+  }, [messages]) // Removed typingUsers from dependency array
+
+  // Add scroll detection to track user scroll position
+  useEffect(() => {
+    const chatContainer = chatContainerRef.current
+    if (!chatContainer) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = chatContainer
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 50 // 50px threshold
+      
+      if (isAtBottom && isUserScrolledUp) {
+        // User scrolled back to bottom
+        setIsUserScrolledUp(false)
+        setNewMessagesWhileScrolledUp(0)
+      } else if (!isAtBottom && !isUserScrolledUp) {
+        // User scrolled up
+        setIsUserScrolledUp(true)
+      }
+    }
+
+    chatContainer.addEventListener('scroll', handleScroll, { passive: true })
+    return () => chatContainer.removeEventListener('scroll', handleScroll)
+  }, [isUserScrolledUp])
 
   // Handle page visibility changes to prevent disconnections from tab throttling
   useEffect(() => {
@@ -756,7 +791,22 @@ export default function TerminalChat() {
       
       {/* Chat layout */}
       <div className="flex-1 p-6 overflow-hidden flex flex-col relative z-20">
-        <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin bg-black/60 backdrop-blur-sm rounded p-4 border border-terminal-dark/30">
+        {/* New messages indicator */}
+        {isUserScrolledUp && newMessagesWhileScrolledUp > 0 && (
+          <div className="absolute top-8 left-1/2 transform -translate-x-1/2 z-30">
+            <button
+              onClick={scrollToBottom}
+              className="bg-terminal-amber text-black px-4 py-2 rounded-lg font-mono text-sm shadow-lg hover:bg-yellow-400 transition-colors animate-pulse"
+            >
+              {newMessagesWhileScrolledUp} new message{newMessagesWhileScrolledUp > 1 ? 's' : ''} ↓
+            </button>
+          </div>
+        )}
+        
+        <div 
+          ref={chatContainerRef}
+          className="flex-1 overflow-y-auto space-y-1 scrollbar-thin bg-black/60 backdrop-blur-sm rounded p-4 border border-terminal-dark/30"
+        >
           {messages.map((message) => (
             <div key={message.id} className="animate-fade-in">
               <span className="text-terminal-dim text-xs">
