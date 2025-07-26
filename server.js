@@ -243,6 +243,7 @@ app.prepare().then(() => {
   const VIDEO_END_COOLDOWN_MS = 30000 // 30 seconds between end events for same video
   const USER_END_EVENT_LIMIT = 3 // Max end events per user per hour
   const USER_END_EVENT_WINDOW = 3600000 // 1 hour
+  const ABSOLUTE_MIN_VIDEO_DURATION = 180000 // 3 minutes - NEVER allow end events before this
   
   // Shared media player state
   let mediaPlayerState = {
@@ -1389,13 +1390,17 @@ app.prepare().then(() => {
         return
       }
       
-      // Enhanced timing validation: video must have been playing for at least 60 seconds
+      // ABSOLUTE PROTECTION: NEVER allow end events before 3 minutes
       if (mediaPlayerState.startTime) {
         const playDuration = currentTime - mediaPlayerState.startTime
-        if (playDuration < 60000) { // Less than 60 seconds (increased from 30)
-          console.log(`Media ended event rejected - insufficient play time (${Math.floor(playDuration/1000)}s) reported by ${username}`)
+        if (playDuration < ABSOLUTE_MIN_VIDEO_DURATION) {
+          console.log(`🚫 ABSOLUTE BLOCK - Media ended event REJECTED - video too young (${Math.floor(playDuration/1000)}s, minimum ${ABSOLUTE_MIN_VIDEO_DURATION/1000}s) reported by ${username}`)
           return
         }
+        console.log(`✅ Absolute duration check passed: ${Math.floor(playDuration/1000)}s (minimum ${ABSOLUTE_MIN_VIDEO_DURATION/1000}s)`)
+      } else {
+        console.log(`🚫 ABSOLUTE BLOCK - Media ended event REJECTED - no start time available for validation`)
+        return
       }
       
       // Additional validation: Check if this is too soon after the last media event

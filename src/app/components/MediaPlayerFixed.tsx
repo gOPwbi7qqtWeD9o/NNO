@@ -345,7 +345,26 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                   
                   // YT.PlayerState.ENDED = 0
                   if (event.data === 0) {
-                    console.log('🎵 ENDED state detected, validating...')
+                    console.log('🎵 ENDED state detected, starting ULTRA STRICT validation...')
+                    
+                    // Get current player state immediately for debugging
+                    const currentTime = playerRef.current?.getCurrentTime?.() || 0
+                    const duration = playerRef.current?.getDuration?.() || videoDuration || 0
+                    
+                    console.log('🔍 DEBUGGING - Player state at ENDED event:', {
+                      currentTime: Math.floor(currentTime),
+                      duration: Math.floor(duration),
+                      videoDuration: Math.floor(videoDuration),
+                      isUserSeeking,
+                      endEventCooldown,
+                      playerStateHistory: playerStateHistory.slice(-3)
+                    })
+                    
+                    // ABSOLUTE BLOCK: Never allow end events for videos under 3 minutes total duration
+                    if (duration > 0 && duration < 180) { // Less than 3 minutes total
+                      console.log(`🚫 ABSOLUTE BLOCK - Video too short for end events (${Math.floor(duration)}s total duration)`)
+                      return
+                    }
                     
                     // Multiple validation layers to prevent false triggers
                     
@@ -373,13 +392,18 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                       videoDuration: Math.floor(videoDuration)
                     })
                     
-                    // 4. Strict duration validation - must be within 5 seconds of actual end
+                    // 4. ULTRA STRICT duration validation - must be at least 95% complete
                     if (duration > 0) {
                       const timeFromEnd = duration - currentTime
-                      if (timeFromEnd > 5) {
-                        console.log(`🎯 End event blocked - too far from actual end (${Math.floor(timeFromEnd)}s remaining)`)
+                      const completionPercentage = (currentTime / duration) * 100
+                      
+                      // Must be at least 95% complete AND within 3 seconds of end
+                      if (completionPercentage < 95 || timeFromEnd > 3) {
+                        console.log(`🎯 End event BLOCKED - insufficient completion: ${Math.floor(completionPercentage)}%, ${Math.floor(timeFromEnd)}s remaining`)
                         return
                       }
+                      
+                      console.log(`✅ Duration validation passed: ${Math.floor(completionPercentage)}% complete, ${Math.floor(timeFromEnd)}s remaining`)
                     } else {
                       console.log('🎯 End event blocked - no duration available for validation')
                       return
