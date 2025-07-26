@@ -276,14 +276,61 @@ export default function TerminalChat() {
         transports: ['websocket', 'polling'], // Use same transports as server
       })
       
-      newSocket.on('connect', () => {
-        setIsConnected(true)
-        setSocket(newSocket)
+      // Handle proof of work challenge
+      newSocket.on('pow_challenge', (data: { challenge: string, difficulty: number, delay: number }) => {
+        console.log('Received proof of work challenge')
+        
+        // Wait for the required delay
+        setTimeout(() => {
+          // Solve proof of work challenge using browser-compatible crypto
+          const solveProofOfWork = async (challenge: string, difficulty: number): Promise<string> => {
+            let nonce = 0
+            while (true) {
+              const solution = nonce.toString()
+              const text = challenge + solution
+              const encoder = new TextEncoder()
+              const data = encoder.encode(text)
+              const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+              const hashArray = Array.from(new Uint8Array(hashBuffer))
+              const hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+              
+              if (hash.startsWith('0'.repeat(difficulty))) {
+                return solution
+              }
+              nonce++
+              
+              // Yield control to prevent blocking UI (every 1000 iterations)
+              if (nonce % 1000 === 0) {
+                await new Promise(resolve => setTimeout(resolve, 0))
+              }
+            }
+          }
+          
+          solveProofOfWork(data.challenge, data.difficulty).then(solution => {
+            newSocket.emit('pow_solution', { solution })
+          })
+        }, data.delay)
+      })
+      
+      // Handle proof of work verification
+      newSocket.on('pow_verified', () => {
+        console.log('Proof of work verified, joining chat...')
         newSocket.emit('join', { 
           username: sanitizedUsername, 
           userColor,
           adminKey: isAdmin ? adminKey : null
         })
+      })
+      
+      newSocket.on('pow_failed', (data: { reason: string }) => {
+        console.error('Proof of work failed:', data.reason)
+        alert('Verification failed: ' + data.reason)
+      })
+
+      newSocket.on('connect', () => {
+        setIsConnected(true)
+        setSocket(newSocket)
+        // Don't emit join immediately - wait for proof of work verification
       })
 
       // Handle pong responses from server

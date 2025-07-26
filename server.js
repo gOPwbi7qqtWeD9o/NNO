@@ -283,11 +283,15 @@ app.prepare().then(() => {
   
   // Word filtering system
   const BANNED_WORDS = [
-    'nigger', 'n1gger', 'n!gger', 'nigga', 'n1gga', 'n!gga',
+    'nigger', 'n1gger', 'n!gger', 'n*gger', 'n@gger', 'n#gger', 'n$gger', 'n%gger',
+    'nigga', 'n1gga', 'n!gga', 'n*gga', 'n@gga', 'n#gga', 'n$gga', 'n%gga',
+    'nig66er', 'ni66er', 'ni6ger', 'nig6er', 'nigg3r', 'nigg€r', 'nigg£r',
+    'n33ger', 'n1gg3r', 'n!gg3r', 'nig33r', 'ni33er', 'n1663r', 'ni663r',
     'faggot', 'f4ggot', 'f@ggot', 'fag', 'f4g', 'f@g',
     'retard', 'r3tard', 'r3t4rd', 'retarded', 'r3t4rded',
     'kike', 'k1ke', 'k!ke', 'spic', 'sp1c', 'sp!c',
-    'chink', 'ch1nk', 'ch!nk', 'gook', 'g00k', 'g0ok'
+    'chink', 'ch1nk', 'ch!nk', 'gook', 'g00k', 'g0ok',
+    'penisgrinder', 'cyberni66ers', 'poop.net'
   ]
   
   function filterOffensiveContent(text) {
@@ -306,6 +310,26 @@ app.prepare().then(() => {
     filteredText = filteredText.replace(/f[\s\-_\.]*a[\s\-_\.]*g[\s\-_\.]*g[\s\-_\.]*[o0][\s\-_\.]*t/gi, '******')
     
     return filteredText
+  }
+  
+  // Proof of Work / Anti-Bot System
+  const userVerification = new Map() // Track verification status by socketId
+  const CHALLENGE_DIFFICULTY = 4 // Number of leading zeros required in hash
+  const CONNECTION_DELAY_MS = 3000 // 3 second delay before allowing activity
+  
+  // Generate proof of work challenge
+  function generateChallenge() {
+    const nonce = Math.random().toString(36).substring(2, 15)
+    const timestamp = Date.now()
+    const challenge = `${nonce}-${timestamp}`
+    return challenge
+  }
+  
+  // Verify proof of work solution
+  function verifyProofOfWork(challenge, solution) {
+    const crypto = require('crypto')
+    const hash = crypto.createHash('sha256').update(challenge + solution).digest('hex')
+    return hash.startsWith('0'.repeat(CHALLENGE_DIFFICULTY))
   }
 
   // Connection rate limiting to prevent script reconnection spam (more lenient)
@@ -422,6 +446,22 @@ app.prepare().then(() => {
     
     const currentTime = Date.now()
     
+    // Initialize verification state for new connection
+    const challenge = generateChallenge()
+    userVerification.set(socket.id, {
+      challenge: challenge,
+      verified: false,
+      connectTime: currentTime,
+      ipAddress: clientIP
+    })
+    
+    // Send proof of work challenge to client
+    socket.emit('pow_challenge', {
+      challenge: challenge,
+      difficulty: CHALLENGE_DIFFICULTY,
+      delay: CONNECTION_DELAY_MS
+    })
+    
     // Check if IP is permanently banned
     if (bannedIPs.has(clientIP)) {
       console.log(`❌ IP ${clientIP} is permanently banned`)
@@ -476,7 +516,47 @@ app.prepare().then(() => {
     recentAttempts.push(currentTime)
     connectionAttempts.set(clientIP, recentAttempts)
 
+    // Handle proof of work solution
+    socket.on('pow_solution', (data) => {
+      const verification = userVerification.get(socket.id)
+      if (!verification) {
+        socket.emit('pow_failed', { reason: 'No challenge found' })
+        return
+      }
+      
+      const { solution } = data
+      const timeSinceConnect = Date.now() - verification.connectTime
+      
+      // Check minimum delay requirement
+      if (timeSinceConnect < CONNECTION_DELAY_MS) {
+        socket.emit('pow_failed', { reason: 'Attempted verification too quickly' })
+        return
+      }
+      
+      // Verify proof of work
+      if (verifyProofOfWork(verification.challenge, solution)) {
+        verification.verified = true
+        socket.emit('pow_verified', { message: 'Verification successful' })
+        console.log(`✅ Client ${socket.id} completed proof of work`)
+      } else {
+        socket.emit('pow_failed', { reason: 'Invalid solution' })
+        console.log(`❌ Client ${socket.id} failed proof of work`)
+      }
+    })
+
     socket.on('join', (data) => {
+      // Check if user has completed proof of work
+      const verification = userVerification.get(socket.id)
+      if (!verification || !verification.verified) {
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: 'Access denied. Complete verification first.',
+          timestamp: new Date()
+        })
+        return
+      }
+      
       const { username, userColor, adminKey } = data
       const userIP = socket.handshake.address
       
@@ -582,6 +662,12 @@ app.prepare().then(() => {
     })
 
     socket.on('message', (message) => {
+      // Check verification status
+      const verification = userVerification.get(socket.id)
+      if (!verification || !verification.verified) {
+        return // Silently ignore messages from unverified users
+      }
+      
       const user = connectedUsers.get(socket.id)
       if (!user) return
       
@@ -793,6 +879,17 @@ app.prepare().then(() => {
         
         console.log(`Message from ${username}: "${sanitizedContent.substring(0, 50)}${sanitizedContent.length > 50 ? '...' : ''}"`)
         
+        // Clear typing state when message is sent
+        userTypingStates.delete(username)
+        typingStates.delete(socket.id)
+        
+        // Send clear typing event
+        socket.broadcast.emit('typing', { 
+          username, 
+          content: '', 
+          userColor: user?.userColor 
+        })
+        
         // Broadcast to other users (sender already has it via optimistic UI)
         socket.broadcast.emit('message', cleanMessage)
         
@@ -808,6 +905,12 @@ app.prepare().then(() => {
     })
 
     socket.on('typing', (data) => {
+      // Check verification status
+      const verification = userVerification.get(socket.id)
+      if (!verification || !verification.verified) {
+        return // Silently ignore typing from unverified users
+      }
+      
       const { username, content, userColor } = data
       const user = connectedUsers.get(socket.id)
       if (!user) return
@@ -1059,8 +1162,23 @@ app.prepare().then(() => {
       // Apply word filtering to typing content
       const filteredContent = content ? filterOffensiveContent(content) : ''
       
+      // FIRST: Clear any existing typing state for this username
+      const existingTypingState = userTypingStates.get(username)
+      if (existingTypingState) {
+        // Clear previous typing state immediately
+        userTypingStates.delete(username)
+        typingStates.delete(existingTypingState.socketId)
+        
+        // Send clear event for previous typing state
+        socket.broadcast.emit('typing', { 
+          username, 
+          content: '', 
+          userColor: user?.userColor 
+        })
+      }
+      
       if (filteredContent) {
-        // Replace any existing typing state for this username (one typing message per user)
+        // Set new typing state (only one per username)
         userTypingStates.set(username, { 
           username, 
           content: filteredContent, 
@@ -1077,14 +1195,14 @@ app.prepare().then(() => {
           lastActivity: currentTime,
           socketId: socket.id
         })
+        
+        // Broadcast new typing state to other clients (not the sender)
+        socket.broadcast.emit('typing', { username, content: filteredContent, userColor: user?.userColor })
       } else {
-        // Clear typing state when user stops typing
+        // Clear typing state when user stops typing (already cleared above if existed)
         userTypingStates.delete(username)
         typingStates.delete(socket.id)
       }
-      
-      // Broadcast filtered typing state to other clients (not the sender)
-      socket.broadcast.emit('typing', { username, content: filteredContent, userColor: user?.userColor })
     })
 
     // Media player synchronization events
@@ -1435,6 +1553,7 @@ app.prepare().then(() => {
         connectedUsers.delete(socket.id)
         typingStates.delete(socket.id)
         userTypingStates.delete(user.username) // Clean up username-based typing state
+        userVerification.delete(socket.id) // Clean up verification state
         
         // Clean up rate limit cooldown for this socket
         userCooldowns.delete(socket.id)
