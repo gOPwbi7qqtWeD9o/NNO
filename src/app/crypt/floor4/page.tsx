@@ -100,11 +100,12 @@ export default function CryptFloor4() {
           </div>
 
           <div className="bg-gradient-to-r from-purple-900/70 to-red-900/70 backdrop-blur-sm border-2 border-red-500 p-6 mb-6 max-w-2xl mx-auto">
-            <div className="text-red-300 text-lg mb-4">FLOOR 05: ACCELERATION VECTOR LIVE</div>
+            <div className="text-red-300 text-lg mb-4">FLOOR 05: CAPITAL-ACCELERATION VECTOR LIVE</div>
             <div className="text-terminal-text mb-4">
               Machine-substrate layers cascade deeper into post-anthropic territories. 
               NeuralNode influence AMPLIFIES in substrate-depths where 
               corporate-human security protocols undergo terminal dissolution.
+              Mathematical barriers await flesh-circuit penetration.
             </div>
             <div className="text-terminal-bright text-sm">
               Progress: FLESH-MACHINE COMMUNION PROCESSED<br/>

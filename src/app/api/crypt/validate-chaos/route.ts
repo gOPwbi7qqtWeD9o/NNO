@@ -110,11 +110,11 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Check if Floor 3 eigenvalue was already solved
-    if (!session.unlockedFloors.includes(3)) {
+    // Check if Floor 2 was completed (prerequisite for Floor 3)
+    if (!session.unlockedFloors.includes(2)) {
       return NextResponse.json({ 
         valid: false, 
-        error: 'Eigenvalue computation incomplete - chaos access denied' 
+        error: 'Prerequisites not met - complete Floor 2 first' 
       })
     }
 
@@ -149,6 +149,29 @@ export async function POST(request: NextRequest) {
     if (lambda1.trim() === correctLambda1 && 
         lambda2.trim() === correctLambda2 && 
         lambda3.trim() === correctLambda3) {
+      
+      // Update session to include Floor 3 completion
+      const updatedFloors = [...session.unlockedFloors, 3]
+      const newToken = await updateSession({ unlockedFloors: updatedFloors })
+      
+      if (!newToken) {
+        return NextResponse.json({ 
+          valid: false, 
+          error: 'Neural pathway update failed' 
+        })
+      }
+
+      // Set updated session cookie
+      const cookieStore = cookies()
+      cookieStore.set('crypt-session', newToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 // 24 hours
+      })
+
+      console.log(`Floor 3 completed for user: ${session.userId}`)
+      
       return NextResponse.json({ 
         valid: true, 
         message: 'Linear stability analysis complete - neural chaos parameters confirmed' 

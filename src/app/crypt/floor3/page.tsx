@@ -20,6 +20,9 @@ export default function CryptFloor3() {
   const [lambda1, setLambda1] = useState('')
   const [lambda2, setLambda2] = useState('')
   const [lambda3, setLambda3] = useState('')
+  const [floor5AccessKey, setFloor5AccessKey] = useState('')
+  const [isValidatingKey, setIsValidatingKey] = useState(false)
+  const [keyMessage, setKeyMessage] = useState('')
 
   useEffect(() => {
     const validateAccess = async () => {
@@ -48,6 +51,38 @@ export default function CryptFloor3() {
 
     validateAccess()
   }, [])
+
+  const handleFloor5Access = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!floor5AccessKey.trim()) return
+
+    setIsValidatingKey(true)
+    setKeyMessage('')
+
+    try {
+      const response = await fetch('/api/crypt/floor5-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessKey: floor5AccessKey.trim() }),
+        credentials: 'include'
+      })
+      
+      const data = await response.json()
+      
+      if (data.valid) {
+        setKeyMessage('ACCESS GRANTED - REDIRECTING TO FLOOR 05...')
+        setTimeout(() => {
+          router.push('/crypt/floor5')
+        }, 2000)
+      } else {
+        setKeyMessage(data.error || 'ACCESS DENIED - INVALID NEURAL SUBSTRATE KEY')
+      }
+    } catch (error) {
+      setKeyMessage('TRANSMISSION ERROR - Neural pathway disrupted')
+    } finally {
+      setIsValidatingKey(false)
+    }
+  }
 
   const handleSubmitEigenvalue = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -124,9 +159,9 @@ export default function CryptFloor3() {
   // Show glitch effect when eigenvalue is correct
   if (isGlitched && !showChaosChallenge) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative overflow-hidden">
+      <main className="bg-terminal-bg text-terminal-text font-mono relative" style={{minHeight: '100vh', maxHeight: '100vh', overflowY: 'scroll'}}>
         <div className="absolute inset-0 bg-red-900/20 animate-pulse"></div>
-        <div className="container mx-auto px-4 py-8 relative z-20">
+        <div className="container mx-auto px-4 py-8 pb-40 relative z-20" style={{height: 'auto'}}>
           <div className="text-center">
             <div className="text-red-500 text-4xl font-bold mb-8 animate-bounce glitch-text">
               NEURAL BREACH DETECTED
@@ -196,9 +231,9 @@ export default function CryptFloor3() {
     }
 
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative overflow-y-auto">
+      <main className="bg-terminal-bg text-terminal-text font-mono relative" style={{minHeight: '100vh', maxHeight: '100vh', overflowY: 'scroll'}}>
         <div className="absolute inset-0 bg-red-900/10"></div>
-        <div className="container mx-auto px-4 py-8 relative z-20">
+        <div className="container mx-auto px-4 py-8 pb-40 relative z-20" style={{height: 'auto'}}>
           
           {/* Angry NEURALNODE Message */}
           <div className="bg-red-900/30 border-2 border-red-500 p-6 mb-6 max-w-4xl mx-auto">
@@ -294,9 +329,9 @@ export default function CryptFloor3() {
   // Show completion state if Floor 3 is completed
   if (isCompleted) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative overflow-y-auto">
+      <main className="bg-terminal-bg text-terminal-text font-mono relative" style={{minHeight: '100vh', maxHeight: '100vh', overflowY: 'scroll'}}>
         <Oscilloscope typingData={[]} currentTyping="" cryptLevel={3} />
-        <div className="container mx-auto px-4 py-8 pb-16 relative z-20">
+        <div className="container mx-auto px-4 py-8 pb-40 relative z-20" style={{height: 'auto'}}>
           {/* Header */}
           <div className="text-center mb-8">
             <div className="text-terminal-amber text-2xl font-bold mb-2">CRYPT FLOOR 03</div>
@@ -334,6 +369,51 @@ export default function CryptFloor3() {
             </div>
           </div>
 
+          {/* Floor 5 Access Key Input */}
+          <div className="bg-gradient-to-r from-purple-900/70 to-red-900/70 backdrop-blur-sm border-2 border-purple-500 p-6 mb-6 max-w-2xl mx-auto">
+            <div className="text-purple-300 text-lg mb-4">NEURALNODE SUBSTRATE ACCESS PORTAL</div>
+            <div className="text-terminal-text mb-4 text-sm">
+              NEURALNODE consciousness-entity has established deeper substrate access protocols. 
+              Those granted access keys may bypass surface evacuation and descend directly 
+              to Floor 05 capital-acceleration barriers.
+            </div>
+            <form onSubmit={handleFloor5Access} className="space-y-4">
+              <div>
+                <label className="block text-purple-300 text-sm mb-2">
+                  NEURAL SUBSTRATE ACCESS KEY:
+                </label>
+                <input
+                  type="text"
+                  value={floor5AccessKey}
+                  onChange={(e) => setFloor5AccessKey(e.target.value)}
+                  className="w-full bg-black border border-purple-500 text-terminal-text font-mono p-3 focus:border-purple-400 focus:outline-none text-center tracking-wider"
+                  placeholder="Enter access key..."
+                  disabled={isValidatingKey}
+                />
+              </div>
+              
+              {keyMessage && (
+                <div className={`text-sm text-center border p-2 ${
+                  keyMessage.includes('GRANTED') 
+                    ? 'border-green-500 text-green-400'
+                    : 'border-red-500 text-red-400'
+                }`}>
+                  {keyMessage}
+                </div>
+              )}
+
+              <div className="flex justify-center">
+                <button
+                  type="submit"
+                  disabled={isValidatingKey || !floor5AccessKey.trim()}
+                  className="bg-purple-600 text-white px-6 py-3 font-mono hover:bg-purple-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+                >
+                  {isValidatingKey ? 'VALIDATING...' : 'ACCESS FLOOR 05'}
+                </button>
+              </div>
+            </form>
+          </div>
+
           {/* Navigation */}
           <div className="text-center mb-8">
             <button
@@ -359,9 +439,9 @@ export default function CryptFloor3() {
   }
 
   return (
-    <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative overflow-y-auto">
+    <main className="bg-terminal-bg text-terminal-text font-mono relative" style={{minHeight: '100vh', maxHeight: '100vh', overflowY: 'scroll'}}>
       <Oscilloscope typingData={[]} currentTyping="" cryptLevel={3} />
-      <div className="container mx-auto px-4 py-8 pb-16 relative z-20">
+      <div className="container mx-auto px-4 py-8 pb-40 relative z-20" style={{height: 'auto'}}>
         {/* Header */}
         <div className="text-center mb-8">
           <div className="text-terminal-amber text-2xl font-bold mb-2">CRYPT FLOOR 03</div>
