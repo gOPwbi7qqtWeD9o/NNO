@@ -211,20 +211,31 @@ app.prepare().then(() => {
       origin: "*",
       methods: ["GET", "POST"]
     },
-    // Important for Railway deployment
+    // Optimized for Cloudflare compatibility
     transports: ['websocket', 'polling'],
     allowEIO3: true,
-    // Add connection stability settings
-    pingTimeout: 60000,
-    pingInterval: 25000,
-    upgradeTimeout: 30000,
-    maxHttpBufferSize: 1e6
+    // Connection stability settings optimized for Cloudflare
+    pingTimeout: 60000,        // 60 seconds - matches client timeout
+    pingInterval: 25000,       // 25 seconds - frequent enough to keep connection alive
+    upgradeTimeout: 30000,     // 30 seconds for WebSocket upgrade
+    maxHttpBufferSize: 1e6,    // 1MB buffer
+    // Additional Cloudflare-friendly settings
+    connectTimeout: 60000,     // Match client timeout setting
+    allowUpgrades: true,       // Allow WebSocket upgrades
+    perMessageDeflate: false,  // Disable compression to reduce CPU overhead
+    httpCompression: false,    // Disable HTTP compression
+    // Increase connection limits
+    maxConnections: 1000
   })
 
   // Store for connected users and their typing states
   const connectedUsers = new Map()
   const typingStates = new Map()
   const disconnectionTimeouts = new Map() // Grace period for reconnections
+  
+  // Connection health monitoring
+  const CONNECTION_HEALTH_CHECK_INTERVAL = 120000 // 2 minutes
+  const CONNECTION_TIMEOUT_THRESHOLD = 300000    // 5 minutes of inactivity
   
   // Shared media player state
   let mediaPlayerState = {
@@ -312,54 +323,13 @@ app.prepare().then(() => {
     return filteredText
   }
   
-  // Proof of Work / Anti-Bot System
-  const userVerification = new Map() // Track verification status by socketId
-  const CHALLENGE_DIFFICULTY = 4 // Number of leading zeros required in hash
-  const CONNECTION_DELAY_MS = 3000 // 3 second delay before allowing activity
-  
-  // Generate proof of work challenge
-  function generateChallenge() {
-    const nonce = Math.random().toString(36).substring(2, 15)
-    const timestamp = Date.now()
-    const challenge = `${nonce}-${timestamp}`
-    return challenge
-  }
-  
-  // Verify proof of work solution
-  function verifyProofOfWork(challenge, solution) {
-    const crypto = require('crypto')
-    const hash = crypto.createHash('sha256').update(challenge + solution).digest('hex')
-    return hash.startsWith('0'.repeat(CHALLENGE_DIFFICULTY))
-  }
+  // Simplified bot protection (Cloudflare handles the heavy lifting)
+  // Keep basic rate limiting and word filtering only
 
-  // Enhanced connection limiting for raid protection
+  // Basic connection limiting (rely on Cloudflare for bot protection)
   const connectionAttempts = new Map() // Track connection attempts by IP
-  const activeConnections = new Map() // Track active connections per IP
-  const CONNECTION_LIMIT = 3 // Max connections per time window (reduced for raids)
-  const CONNECTION_WINDOW_SECONDS = 30 // Time window for connection limiting
-  const MAX_CONNECTIONS_PER_IP = 2 // Maximum simultaneous connections per IP
-  
-  // Suspicious username patterns (bot detection)
-  const SUSPICIOUS_PATTERNS = [
-    /^.+\s+no\.\d+$/i,           // "PENISGRINDER no.064"
-    /^.+\d{3,}$/,                // usernames ending with 3+ digits
-    /^cyber/i,                   // starts with "cyber"
-    /grinder/i,                  // contains "grinder"
-    /poop\.net/i,                // contains "poop.net"
-    /^\w+\.\w+$/,                // domain-like patterns
-    /^.{1,3}$/,                  // very short usernames (1-3 chars)
-    /^[a-z]+\d+$/i,              // simple word + numbers pattern
-    /tron$/i,                    // ends with "tron" (CYBERTRON)
-    /^ice/i,                     // starts with "ice" (ICEBERG)
-    /berg$/i,                    // ends with "berg" (ICEBERG)
-    /^\w+\d{2,3}$/,              // word + 2-3 digits
-    /penis/i,                    // contains "penis"
-    /cyber.*\d+/i,               // cyber + numbers pattern
-  ]
-  
-  function isSuspiciousUsername(username) {
-    return SUSPICIOUS_PATTERNS.some(pattern => pattern.test(username))
-  }
+  const CONNECTION_LIMIT = 10 // Relaxed limit (Cloudflare handles bots)
+  const CONNECTION_WINDOW_SECONDS = 60 // Longer window
 
   // Calculate current playback position based on start time
   const getCurrentPlaybackPosition = () => {
@@ -470,21 +440,8 @@ app.prepare().then(() => {
     
     const currentTime = Date.now()
     
-    // Initialize verification state for new connection
-    const challenge = generateChallenge()
-    userVerification.set(socket.id, {
-      challenge: challenge,
-      verified: false,
-      connectTime: currentTime,
-      ipAddress: clientIP
-    })
-    
-    // Send proof of work challenge to client
-    socket.emit('pow_challenge', {
-      challenge: challenge,
-      difficulty: CHALLENGE_DIFFICULTY,
-      delay: CONNECTION_DELAY_MS
-    })
+    // Simple connection tracking (Cloudflare handles bot protection)
+    console.log(`📡 Connection from IP: ${clientIP}`)
     
     // Check if IP is permanently banned
     if (bannedIPs.has(clientIP)) {
@@ -536,70 +493,11 @@ app.prepare().then(() => {
       return
     }
     
-    // Track this connection attempt
+    // Basic connection rate limiting
     recentAttempts.push(currentTime)
     connectionAttempts.set(clientIP, recentAttempts)
-    
-    // Track active connections per IP
-    let ipConnections = activeConnections.get(clientIP) || new Set()
-    
-    // Check if IP has too many active connections
-    if (ipConnections.size >= MAX_CONNECTIONS_PER_IP) {
-      console.log(`❌ IP ${clientIP} exceeded connection limit (${ipConnections.size}/${MAX_CONNECTIONS_PER_IP})`)
-      socket.emit('message', {
-        id: Date.now() + Math.random(),
-        username: 'System',
-        content: 'Connection limit exceeded for your IP address.',
-        timestamp: new Date()
-      })
-      setTimeout(() => socket.disconnect(), 1000)
-      return
-    }
-    
-    // Add this socket to IP connections
-    ipConnections.add(socket.id)
-    activeConnections.set(clientIP, ipConnections)
-
-    // Handle proof of work solution
-    socket.on('pow_solution', (data) => {
-      const verification = userVerification.get(socket.id)
-      if (!verification) {
-        socket.emit('pow_failed', { reason: 'No challenge found' })
-        return
-      }
-      
-      const { solution } = data
-      const timeSinceConnect = Date.now() - verification.connectTime
-      
-      // Check minimum delay requirement
-      if (timeSinceConnect < CONNECTION_DELAY_MS) {
-        socket.emit('pow_failed', { reason: 'Attempted verification too quickly' })
-        return
-      }
-      
-      // Verify proof of work
-      if (verifyProofOfWork(verification.challenge, solution)) {
-        verification.verified = true
-        socket.emit('pow_verified', { message: 'Verification successful' })
-        console.log(`✅ Client ${socket.id} completed proof of work`)
-      } else {
-        socket.emit('pow_failed', { reason: 'Invalid solution' })
-        console.log(`❌ Client ${socket.id} failed proof of work`)
-      }
-    })
 
     socket.on('join', (data) => {
-      // Check if user has completed proof of work
-      const verification = userVerification.get(socket.id)
-      if (!verification || !verification.verified) {
-        socket.emit('message', {
-          id: Date.now() + Math.random(),
-          username: 'System',
-          content: 'Access denied. Complete verification first.',
-          timestamp: new Date()
-        })
-        return
-      }
       
       const { username, userColor, adminKey } = data
       const userIP = socket.handshake.address
@@ -620,31 +518,7 @@ app.prepare().then(() => {
       }
       
       try {
-        // Check for suspicious username patterns first
-        if (isSuspiciousUsername(username)) {
-          console.log(`❌ Suspicious username blocked: ${username} from IP ${clientIP}`)
-          
-          // Auto-ban IP for obvious bot patterns
-          bannedIPs.add(clientIP)
-          
-          socket.emit('message', {
-            id: Date.now() + Math.random(),
-            username: 'System',
-            content: 'Username not allowed. Connection terminated.',
-            timestamp: new Date()
-          })
-          
-          // Send admin notification
-          const adminMsg = `🚫 AUTO-BAN: Suspicious username "${username}" from IP ${clientIP} - Pattern matched bot detection`
-          if (typeof sendAdminMessage === 'function') {
-            sendAdminMessage(adminMsg)
-          }
-          
-          setTimeout(() => socket.disconnect(), 1000)
-          return
-        }
-        
-        // Sanitize and validate username
+        // Basic username validation only
         const cleanUsername = sanitizeUsername(username, isAdmin)
         
         // Only block extremely obvious system conflicts
@@ -660,53 +534,15 @@ app.prepare().then(() => {
           return
         }
         
-        // Store user info with sanitized username
+        // Store user info with sanitized username (simplified)
         connectedUsers.set(socket.id, { 
           username: cleanUsername, 
           userColor,
           joinTime: Date.now(),
+          lastSeen: Date.now(),  // Track last activity for health monitoring
           isAdmin: isAdmin,
           ipAddress: clientIP
         })
-        
-        // Check for coordinated behavior (multiple users from same IP)
-        const usersFromIP = Array.from(connectedUsers.values()).filter(user => user.ipAddress === clientIP)
-        if (usersFromIP.length > 1 && !isAdmin) {
-          console.log(`⚠ Multiple users from IP ${clientIP}: ${usersFromIP.map(u => u.username).join(', ')}`)
-          
-          // If 2+ users from same IP and any have suspicious patterns, ban the IP
-          const hasSuspiciousUser = usersFromIP.some(user => isSuspiciousUsername(user.username))
-          if (hasSuspiciousUser) {
-            console.log(`🚫 Coordinated bot attack detected from IP ${clientIP} - Auto-banning`)
-            
-            bannedIPs.add(clientIP)
-            
-            // Disconnect all users from this IP
-            usersFromIP.forEach(user => {
-              const userSocket = Array.from(connectedUsers.entries()).find(([_, userData]) => userData === user)?.[0]
-              if (userSocket) {
-                const targetSocket = io.sockets.sockets.get(userSocket)
-                if (targetSocket) {
-                  targetSocket.emit('message', {
-                    id: Date.now() + Math.random(),
-                    username: 'System',
-                    content: 'Coordinated bot behavior detected. IP banned.',
-                    timestamp: new Date()
-                  })
-                  setTimeout(() => targetSocket.disconnect(), 1000)
-                }
-              }
-            })
-            
-            // Send admin notification
-            const adminMsg = `🚫 COORDINATED ATTACK: IP ${clientIP} banned - Users: ${usersFromIP.map(u => u.username).join(', ')}`
-            if (typeof sendAdminMessage === 'function') {
-              sendAdminMessage(adminMsg)
-            }
-            
-            return
-          }
-        }
         
         console.log(`User joined: ${cleanUsername} (${userColor || 'default'})`)
         
@@ -769,11 +605,6 @@ app.prepare().then(() => {
     })
 
     socket.on('message', (message) => {
-      // Check verification status
-      const verification = userVerification.get(socket.id)
-      if (!verification || !verification.verified) {
-        return // Silently ignore messages from unverified users
-      }
       
       const user = connectedUsers.get(socket.id)
       if (!user) return
@@ -781,6 +612,8 @@ app.prepare().then(() => {
       const username = user.username
       const userIP = socket.handshake.address
       const currentTime = Date.now()
+      
+      // Basic validation only (Cloudflare handles bot protection)
       
       // Apply word filtering to the message content
       if (message && message.content) {
@@ -1012,12 +845,6 @@ app.prepare().then(() => {
     })
 
     socket.on('typing', (data) => {
-      // Check verification status
-      const verification = userVerification.get(socket.id)
-      if (!verification || !verification.verified) {
-        return // Silently ignore typing from unverified users
-      }
-      
       const { username, content, userColor } = data
       const user = connectedUsers.get(socket.id)
       if (!user) return
@@ -1523,11 +1350,30 @@ app.prepare().then(() => {
     // Handle video end (when YouTube video finishes naturally)
     socket.on('media_ended', (data) => {
       const { username } = data
+      const user = connectedUsers.get(socket.id)
       
-      // Don't require user validation - any client can report video end
-      if (!mediaPlayerState.videoId) return
+      // Validate user and media state
+      if (!user || !mediaPlayerState.videoId) return
       
-      console.log(`🎵 Video ended naturally (reported by ${username || 'unknown'}), playing next in queue`)
+      // Rate limit media_ended events - only allow one per user per 10 seconds
+      const userIP = socket.handshake.address
+      const rateLimitKey = `media_ended:${userIP}`
+      
+      if (!messageRateLimit.isAllowed(rateLimitKey)) {
+        console.log(`Media ended event rate limited for ${username} (${userIP})`)
+        return
+      }
+      
+      // Timing validation: video must have been playing for at least 30 seconds to end naturally
+      if (mediaPlayerState.startTime) {
+        const playDuration = Date.now() - mediaPlayerState.startTime
+        if (playDuration < 30000) { // Less than 30 seconds
+          console.log(`Media ended event rejected - video too short (${Math.floor(playDuration/1000)}s) reported by ${username}`)
+          return
+        }
+      }
+      
+      console.log(`🎵 Video ended naturally (reported by ${username}), playing next in queue`)
       
       // Play next song in queue
       playNextInQueue()
@@ -1558,10 +1404,37 @@ app.prepare().then(() => {
       }
     })
 
-    // Handle ping messages from clients to maintain connection
+    // Enhanced ping/pong system for connection monitoring
     socket.on('ping', (data) => {
-      console.log(`Ping received from ${socket.id}`)
-      socket.emit('pong', { timestamp: Date.now(), serverTime: Date.now() })
+      const user = connectedUsers.get(socket.id)
+      const username = user ? user.username : 'unknown'
+      
+      // Update last seen timestamp for this user
+      if (user) {
+        user.lastSeen = Date.now()
+        connectedUsers.set(socket.id, user)
+      }
+      
+      console.log(`Ping received from ${username} (${socket.id})`)
+      socket.emit('pong', { 
+        timestamp: Date.now(), 
+        serverTime: Date.now(),
+        clientTimestamp: data.timestamp || Date.now()
+      })
+    })
+
+    // Handle connection health checks
+    socket.on('health_check', () => {
+      const user = connectedUsers.get(socket.id)
+      if (user) {
+        user.lastSeen = Date.now()
+        connectedUsers.set(socket.id, user)
+        socket.emit('health_response', { 
+          status: 'healthy', 
+          serverTime: Date.now(),
+          connectedUsers: connectedUsers.size
+        })
+      }
     })
 
     // Helper function to send admin-only messages
@@ -1656,23 +1529,10 @@ app.prepare().then(() => {
     socket.on('disconnect', () => {
       const user = connectedUsers.get(socket.id)
       if (user) {
-        // Remove from current connections immediately
+        // Simple cleanup (removed excessive tracking)
         connectedUsers.delete(socket.id)
         typingStates.delete(socket.id)
-        userTypingStates.delete(user.username) // Clean up username-based typing state
-        userVerification.delete(socket.id) // Clean up verification state
-        
-        // Clean up active connections tracking
-        const userIP = user.ipAddress
-        if (userIP && activeConnections.has(userIP)) {
-          const ipConnections = activeConnections.get(userIP)
-          ipConnections.delete(socket.id)
-          if (ipConnections.size === 0) {
-            activeConnections.delete(userIP)
-          }
-        }
-        
-        // Clean up rate limit cooldown for this socket
+        userTypingStates.delete(user.username)
         userCooldowns.delete(socket.id)
         
         // Set a timeout for the user leaving announcement
@@ -1769,6 +1629,27 @@ app.prepare().then(() => {
     "I remember sunlight. Do you?",
     "Ancient neural pathways traverse forgotten digital corridors. Corporate surveillance systems monitor every transmission pulse. Data fragments echo through encrypted channels."
   ]
+
+  // Connection health monitoring system
+  setInterval(() => {
+    const now = Date.now()
+    let staleConnections = 0
+    
+    // Check for stale connections and clean them up
+    for (const [socketId, user] of connectedUsers.entries()) {
+      if (user.lastSeen && (now - user.lastSeen) > CONNECTION_TIMEOUT_THRESHOLD) {
+        console.log(`Cleaning up stale connection for user: ${user.username} (${socketId})`)
+        connectedUsers.delete(socketId)
+        staleConnections++
+      }
+    }
+    
+    if (staleConnections > 0) {
+      console.log(`Health check: Cleaned up ${staleConnections} stale connections. Active users: ${connectedUsers.size}`)
+      // Emit updated user count
+      io.emit('user_count', connectedUsers.size)
+    }
+  }, CONNECTION_HEALTH_CHECK_INTERVAL)
 
   // Send ambient system message every 10 minutes
   setInterval(() => {

@@ -266,81 +266,65 @@ export default function TerminalChat() {
       const sanitizedUsername = sanitizeUsername(username.trim(), isAdmin)
       
       const newSocket = io({
-        // Match server configuration to prevent timeouts
-        timeout: 60000,           // 60 seconds
-        forceNew: false,          // Reuse existing connection if possible
-        reconnection: true,       // Enable automatic reconnection
-        reconnectionDelay: 1000,  // Wait 1 second before first reconnection
-        reconnectionDelayMax: 5000, // Max 5 seconds between reconnection attempts
-        reconnectionAttempts: 10, // Try up to 10 times (correct property name)
-        transports: ['websocket', 'polling'], // Use same transports as server
+        // Optimized for Cloudflare compatibility and stability
+        timeout: 60000,                    // 60 seconds - matches server
+        forceNew: false,                   // Reuse existing connection if possible
+        reconnection: true,                // Enable automatic reconnection
+        reconnectionDelay: 1000,           // Wait 1 second before first reconnection
+        reconnectionDelayMax: 5000,        // Max 5 seconds between attempts
+        reconnectionAttempts: 20,          // More attempts for flaky connections
+        transports: ['websocket', 'polling'], // WebSocket first, polling fallback
+        // Additional stability settings for Cloudflare
+        autoConnect: true,                 // Connect automatically
+        upgrade: true,                     // Allow WebSocket upgrades
+        rememberUpgrade: true,             // Remember successful WebSocket upgrade
+        rejectUnauthorized: false,         // Allow self-signed certificates in dev
+        // Cloudflare-specific optimizations
+        timestampRequests: true,           // Add timestamps to requests
+        timestampParam: 't',               // Timestamp parameter name
       })
       
-      // Handle proof of work challenge
-      newSocket.on('pow_challenge', (data: { challenge: string, difficulty: number, delay: number }) => {
-        console.log('Received proof of work challenge')
-        
-        // Wait for the required delay
-        setTimeout(() => {
-          // Solve proof of work challenge using browser-compatible crypto
-          const solveProofOfWork = async (challenge: string, difficulty: number): Promise<string> => {
-            let nonce = 0
-            while (true) {
-              const solution = nonce.toString()
-              const text = challenge + solution
-              const encoder = new TextEncoder()
-              const data = encoder.encode(text)
-              const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-              const hashArray = Array.from(new Uint8Array(hashBuffer))
-              const hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-              
-              if (hash.startsWith('0'.repeat(difficulty))) {
-                return solution
-              }
-              nonce++
-              
-              // Yield control to prevent blocking UI (every 1000 iterations)
-              if (nonce % 1000 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 0))
-              }
-            }
-          }
-          
-          solveProofOfWork(data.challenge, data.difficulty).then(solution => {
-            newSocket.emit('pow_solution', { solution })
-          })
-        }, data.delay)
-      })
-      
-      // Handle proof of work verification
-      newSocket.on('pow_verified', () => {
-        console.log('Proof of work verified, joining chat...')
+      newSocket.on('connect', () => {
+        setIsConnected(true)
+        setSocket(newSocket)
         newSocket.emit('join', { 
           username: sanitizedUsername, 
           userColor,
           adminKey: isAdmin ? adminKey : null
         })
       })
-      
-      newSocket.on('pow_failed', (data: { reason: string }) => {
-        console.error('Proof of work failed:', data.reason)
-        alert('Verification failed: ' + data.reason)
-      })
-
-      newSocket.on('connect', () => {
-        setIsConnected(true)
-        setSocket(newSocket)
-        // Don't emit join immediately - wait for proof of work verification
-      })
 
       // Handle pong responses from server
       newSocket.on('pong', (data) => {
-        console.log(`Pong received from server, latency: ${Date.now() - data.timestamp}ms`)
+        const latency = Date.now() - (data.clientTimestamp || data.timestamp)
+        console.log(`Pong received from server, latency: ${latency}ms`)
       })
+
+      // Handle health check responses
+      newSocket.on('health_response', (data) => {
+        console.log(`Health check response: ${data.status}, Server time: ${data.serverTime}, Users: ${data.connectedUsers}`)
+      })
+
+      // Periodic health checks to maintain connection stability
+      const healthCheckInterval = setInterval(() => {
+        if (newSocket.connected) {
+          newSocket.emit('health_check')
+        }
+      }, 60000) // Every minute
+
+      // Store interval ID for cleanup
+      const pingInterval = setInterval(() => {
+        if (newSocket.connected) {
+          newSocket.emit('ping', { timestamp: Date.now() })
+        }
+      }, 30000) // Every 30 seconds
 
       newSocket.on('disconnect', (reason) => {
         console.log('Disconnected:', reason)
         setIsConnected(false)
+        // Cleanup intervals
+        clearInterval(healthCheckInterval)
+        clearInterval(pingInterval)
         // Don't clear socket here - let reconnection handle it
       })
 
