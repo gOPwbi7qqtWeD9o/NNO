@@ -396,7 +396,8 @@ app.prepare().then(() => {
           username: cleanUsername, 
           userColor,
           joinTime: Date.now(),
-          isAdmin: isAdmin
+          isAdmin: isAdmin,
+          ipAddress: clientIP
         })
         
         console.log(`User joined: ${cleanUsername} (${userColor || 'default'})`)
@@ -1086,11 +1087,48 @@ app.prepare().then(() => {
           timestamp: new Date()
         })
         
+      } else if (command === 'list_users') {
+        const userList = Array.from(connectedUsers.values()).map(userData => 
+          `${userData.username} (${userData.ipAddress})${userData.isAdmin ? ' [ADMIN]' : ''}`
+        )
+        
+        const userMessage = userList.length > 0 
+          ? `Connected Users (${userList.length}):\n${userList.join('\n')}`
+          : 'No users currently connected.'
+        
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: userMessage,
+          timestamp: new Date()
+        })
+        
+      } else if (command === 'get_user_ip' && data.targetUsername) {
+        const targetUser = Array.from(connectedUsers.values()).find(userData => 
+          userData.username.toLowerCase() === data.targetUsername.toLowerCase()
+        )
+        
+        if (targetUser) {
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: `User ${targetUser.username} IP: ${targetUser.ipAddress}`,
+            timestamp: new Date()
+          })
+        } else {
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: `User ${data.targetUsername} not found.`,
+            timestamp: new Date()
+          })
+        }
+        
       } else {
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
-          content: 'Invalid admin command. Available: ban_ip, unban_ip, list_bans',
+          content: 'Invalid admin command. Available: ban_ip, unban_ip, list_bans, list_users, get_user_ip',
           timestamp: new Date()
         })
       }

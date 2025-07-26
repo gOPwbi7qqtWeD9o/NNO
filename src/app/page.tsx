@@ -74,6 +74,7 @@ export default function TerminalChat() {
   const [adminCommand, setAdminCommand] = useState('')
   const [targetIP, setTargetIP] = useState('')
   const [banReason, setBanReason] = useState('')
+  const [targetUsername, setTargetUsername] = useState('')
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -377,18 +378,20 @@ export default function TerminalChat() {
     }
   }
 
-  const handleAdminCommand = (command: string, ip?: string, reason?: string) => {
+  const handleAdminCommand = (command: string, ip?: string, reason?: string, username?: string) => {
     if (!isAdmin || !socket) return
     
     socket.emit('admin_command', {
       command,
       targetIP: ip,
-      reason: reason
+      reason: reason,
+      targetUsername: username
     })
     
     // Clear form
     setTargetIP('')
     setBanReason('')
+    setTargetUsername('')
   }
 
   const formatTime = (date: Date | string | number) => {
@@ -623,11 +626,36 @@ export default function TerminalChat() {
                 </div>
               </div>
               
+              {/* User IP Lookup */}
+              <div className="mb-4 border-t border-terminal-dim pt-4">
+                <div className="text-terminal-text text-xs mb-2">Get User IP:</div>
+                <input
+                  type="text"
+                  value={targetUsername}
+                  onChange={(e) => setTargetUsername(e.target.value)}
+                  placeholder="Username"
+                  className="w-full bg-transparent border border-terminal-dim text-terminal-text font-mono text-xs p-2 mb-2"
+                />
+                <button
+                  onClick={() => handleAdminCommand('get_user_ip', undefined, undefined, targetUsername)}
+                  disabled={!targetUsername.trim()}
+                  className="bg-blue-600 text-white px-3 py-1 text-xs font-mono hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed w-full"
+                >
+                  GET USER IP
+                </button>
+              </div>
+              
               {/* Quick Actions */}
               <div className="flex flex-col gap-2">
                 <button
-                  onClick={() => handleAdminCommand('list_bans')}
+                  onClick={() => handleAdminCommand('list_users')}
                   className="bg-terminal-amber text-black px-3 py-1 text-xs font-mono hover:bg-yellow-400"
+                >
+                  LIST ALL USERS & IPs
+                </button>
+                <button
+                  onClick={() => handleAdminCommand('list_bans')}
+                  className="bg-orange-600 text-white px-3 py-1 text-xs font-mono hover:bg-orange-500"
                 >
                   LIST BANNED IPs
                 </button>
