@@ -332,10 +332,34 @@ app.prepare().then(() => {
     return hash.startsWith('0'.repeat(CHALLENGE_DIFFICULTY))
   }
 
-  // Connection rate limiting to prevent script reconnection spam (more lenient)
+  // Enhanced connection limiting for raid protection
   const connectionAttempts = new Map() // Track connection attempts by IP
-  const CONNECTION_LIMIT = 8 // Max connections per time window (increased from 5)
-  const CONNECTION_WINDOW_SECONDS = 60 // Time window for connection limiting (increased from 30)
+  const activeConnections = new Map() // Track active connections per IP
+  const CONNECTION_LIMIT = 3 // Max connections per time window (reduced for raids)
+  const CONNECTION_WINDOW_SECONDS = 30 // Time window for connection limiting
+  const MAX_CONNECTIONS_PER_IP = 2 // Maximum simultaneous connections per IP
+  
+  // Suspicious username patterns (bot detection)
+  const SUSPICIOUS_PATTERNS = [
+    /^.+\s+no\.\d+$/i,           // "PENISGRINDER no.064"
+    /^.+\d{3,}$/,                // usernames ending with 3+ digits
+    /^cyber/i,                   // starts with "cyber"
+    /grinder/i,                  // contains "grinder"
+    /poop\.net/i,                // contains "poop.net"
+    /^\w+\.\w+$/,                // domain-like patterns
+    /^.{1,3}$/,                  // very short usernames (1-3 chars)
+    /^[a-z]+\d+$/i,              // simple word + numbers pattern
+    /tron$/i,                    // ends with "tron" (CYBERTRON)
+    /^ice/i,                     // starts with "ice" (ICEBERG)
+    /berg$/i,                    // ends with "berg" (ICEBERG)
+    /^\w+\d{2,3}$/,              // word + 2-3 digits
+    /penis/i,                    // contains "penis"
+    /cyber.*\d+/i,               // cyber + numbers pattern
+  ]
+  
+  function isSuspiciousUsername(username) {
+    return SUSPICIOUS_PATTERNS.some(pattern => pattern.test(username))
+  }
 
   // Calculate current playback position based on start time
   const getCurrentPlaybackPosition = () => {
@@ -515,6 +539,26 @@ app.prepare().then(() => {
     // Track this connection attempt
     recentAttempts.push(currentTime)
     connectionAttempts.set(clientIP, recentAttempts)
+    
+    // Track active connections per IP
+    let ipConnections = activeConnections.get(clientIP) || new Set()
+    
+    // Check if IP has too many active connections
+    if (ipConnections.size >= MAX_CONNECTIONS_PER_IP) {
+      console.log(`❌ IP ${clientIP} exceeded connection limit (${ipConnections.size}/${MAX_CONNECTIONS_PER_IP})`)
+      socket.emit('message', {
+        id: Date.now() + Math.random(),
+        username: 'System',
+        content: 'Connection limit exceeded for your IP address.',
+        timestamp: new Date()
+      })
+      setTimeout(() => socket.disconnect(), 1000)
+      return
+    }
+    
+    // Add this socket to IP connections
+    ipConnections.add(socket.id)
+    activeConnections.set(clientIP, ipConnections)
 
     // Handle proof of work solution
     socket.on('pow_solution', (data) => {
@@ -576,6 +620,30 @@ app.prepare().then(() => {
       }
       
       try {
+        // Check for suspicious username patterns first
+        if (isSuspiciousUsername(username)) {
+          console.log(`❌ Suspicious username blocked: ${username} from IP ${clientIP}`)
+          
+          // Auto-ban IP for obvious bot patterns
+          bannedIPs.add(clientIP)
+          
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: 'Username not allowed. Connection terminated.',
+            timestamp: new Date()
+          })
+          
+          // Send admin notification
+          const adminMsg = `🚫 AUTO-BAN: Suspicious username "${username}" from IP ${clientIP} - Pattern matched bot detection`
+          if (typeof sendAdminMessage === 'function') {
+            sendAdminMessage(adminMsg)
+          }
+          
+          setTimeout(() => socket.disconnect(), 1000)
+          return
+        }
+        
         // Sanitize and validate username
         const cleanUsername = sanitizeUsername(username, isAdmin)
         
@@ -600,6 +668,45 @@ app.prepare().then(() => {
           isAdmin: isAdmin,
           ipAddress: clientIP
         })
+        
+        // Check for coordinated behavior (multiple users from same IP)
+        const usersFromIP = Array.from(connectedUsers.values()).filter(user => user.ipAddress === clientIP)
+        if (usersFromIP.length > 1 && !isAdmin) {
+          console.log(`⚠ Multiple users from IP ${clientIP}: ${usersFromIP.map(u => u.username).join(', ')}`)
+          
+          // If 2+ users from same IP and any have suspicious patterns, ban the IP
+          const hasSuspiciousUser = usersFromIP.some(user => isSuspiciousUsername(user.username))
+          if (hasSuspiciousUser) {
+            console.log(`🚫 Coordinated bot attack detected from IP ${clientIP} - Auto-banning`)
+            
+            bannedIPs.add(clientIP)
+            
+            // Disconnect all users from this IP
+            usersFromIP.forEach(user => {
+              const userSocket = Array.from(connectedUsers.entries()).find(([_, userData]) => userData === user)?.[0]
+              if (userSocket) {
+                const targetSocket = io.sockets.sockets.get(userSocket)
+                if (targetSocket) {
+                  targetSocket.emit('message', {
+                    id: Date.now() + Math.random(),
+                    username: 'System',
+                    content: 'Coordinated bot behavior detected. IP banned.',
+                    timestamp: new Date()
+                  })
+                  setTimeout(() => targetSocket.disconnect(), 1000)
+                }
+              }
+            })
+            
+            // Send admin notification
+            const adminMsg = `🚫 COORDINATED ATTACK: IP ${clientIP} banned - Users: ${usersFromIP.map(u => u.username).join(', ')}`
+            if (typeof sendAdminMessage === 'function') {
+              sendAdminMessage(adminMsg)
+            }
+            
+            return
+          }
+        }
         
         console.log(`User joined: ${cleanUsername} (${userColor || 'default'})`)
         
@@ -1554,6 +1661,16 @@ app.prepare().then(() => {
         typingStates.delete(socket.id)
         userTypingStates.delete(user.username) // Clean up username-based typing state
         userVerification.delete(socket.id) // Clean up verification state
+        
+        // Clean up active connections tracking
+        const userIP = user.ipAddress
+        if (userIP && activeConnections.has(userIP)) {
+          const ipConnections = activeConnections.get(userIP)
+          ipConnections.delete(socket.id)
+          if (ipConnections.size === 0) {
+            activeConnections.delete(userIP)
+          }
+        }
         
         // Clean up rate limit cooldown for this socket
         userCooldowns.delete(socket.id)
