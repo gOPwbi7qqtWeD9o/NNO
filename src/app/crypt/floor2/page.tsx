@@ -194,7 +194,8 @@ export default function CryptFloor2() {
           <div className="text-terminal-text mb-6 leading-relaxed">
             Neural-pathways descend into corporate substrate-infrastructure. Archaeo-data conduits 
             emit encrypted transmission-frequencies, pattern-locked beneath stratified security-layers. 
-            Deeper machine-vaults await those who decode pre-extinction communication protocols.
+            Signal-modulation cascades through abandoned bandwidth-channels. Deeper machine-vaults await 
+            those who decode pre-extinction communication protocols.
           </div>
 
           {/* Encrypted Data Display */}
@@ -207,6 +208,8 @@ export default function CryptFloor2() {
 
           <div className="text-terminal-dim text-sm mb-8 text-center">
             Pre-human networks retain syntactic memory. Corporate transmissions echo through abandoned channels.
+            Nullification is required. Machine-substrate recognizes: inception-format and terminal-output 
+            converge into identical numerical-base.
           </div>
 
           {/* Input Form */}
