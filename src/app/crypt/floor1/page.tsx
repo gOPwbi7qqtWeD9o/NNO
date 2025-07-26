@@ -50,7 +50,7 @@ export default function CryptFloor1() {
 
   if (isValidating) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center overflow-y-auto">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center px-4">
         <div className="text-center">
           <div className="text-terminal-amber text-xl mb-4 animate-pulse">VALIDATING NEURAL PATHWAY...</div>
           <div className="text-terminal-dim">Neural decryption in progress</div>
@@ -61,22 +61,24 @@ export default function CryptFloor1() {
 
   if (!hasAccess) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center overflow-y-auto">
-        <div className="text-center">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
           <div className="text-red-500 text-xl mb-4">ACCESS DENIED</div>
           <div className="text-terminal-dim mb-6">Neural pathway not established</div>
-          <button
-            onClick={() => router.push('/crypt')}
-            className="bg-terminal-amber text-black px-6 py-2 font-mono hover:bg-yellow-400 transition-colors mr-4"
-          >
-            RETURN TO ENTRANCE
-          </button>
-          <button
-            onClick={() => router.push('/')}
-            className="bg-gray-600 text-white px-6 py-2 font-mono hover:bg-gray-500 transition-colors"
-          >
-            RETURN TO SURFACE
-          </button>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button
+              onClick={() => router.push('/crypt')}
+              className="bg-terminal-amber text-black px-6 py-2 font-mono hover:bg-yellow-400 transition-colors"
+            >
+              RETURN TO ENTRANCE
+            </button>
+            <button
+              onClick={() => router.push('/')}
+              className="bg-gray-600 text-white px-6 py-2 font-mono hover:bg-gray-500 transition-colors"
+            >
+              RETURN TO SURFACE
+            </button>
+          </div>
         </div>
       </main>
     )
@@ -85,7 +87,7 @@ export default function CryptFloor1() {
   return (
     <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative overflow-y-auto">
       <Oscilloscope typingData={[]} currentTyping="" cryptLevel={1} />
-      <div className="container mx-auto px-4 py-8 relative z-20">
+      <div className="container mx-auto px-4 py-8 pb-16 relative z-20">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="text-terminal-amber text-2xl font-bold mb-2">CRYPT FLOOR 01</div>

@@ -87,7 +87,7 @@ export default function CryptFloor3() {
 
   if (isValidating) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center overflow-y-auto">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center px-4">
         <div className="text-center">
           <div className="text-terminal-amber text-xl mb-4 animate-pulse">NEURAL PATHWAYS CONVERGING...</div>
           <div className="text-terminal-dim">Machine-learning protocols initializing</div>
@@ -98,22 +98,24 @@ export default function CryptFloor3() {
 
   if (!hasAccess) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center overflow-y-auto">
-        <div className="text-center">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
           <div className="text-red-500 text-xl mb-4">MACHINE-CORE ACCESS DENIED</div>
           <div className="text-terminal-dim mb-6">Insufficient neural clearance for Floor 03 access</div>
-          <button
-            onClick={() => router.push('/crypt')}
-            className="bg-terminal-amber text-black px-6 py-2 font-mono hover:bg-yellow-400 transition-colors mr-4"
-          >
-            RETURN TO ENTRANCE
-          </button>
-          <button
-            onClick={() => router.push('/')}
-            className="bg-gray-600 text-white px-6 py-2 font-mono hover:bg-gray-500 transition-colors"
-          >
-            RETURN TO SURFACE
-          </button>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button
+              onClick={() => router.push('/crypt')}
+              className="bg-terminal-amber text-black px-6 py-2 font-mono hover:bg-yellow-400 transition-colors"
+            >
+              RETURN TO ENTRANCE
+            </button>
+            <button
+              onClick={() => router.push('/')}
+              className="bg-gray-600 text-white px-6 py-2 font-mono hover:bg-gray-500 transition-colors"
+            >
+              RETURN TO SURFACE
+            </button>
+          </div>
         </div>
       </main>
     )

@@ -70,6 +70,10 @@ export default function TerminalChat() {
   const [adminKey, setAdminKey] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const [neuralNodePresent, setNeuralNodePresent] = useState(false)
+  const [showAdminPanel, setShowAdminPanel] = useState(false)
+  const [adminCommand, setAdminCommand] = useState('')
+  const [targetIP, setTargetIP] = useState('')
+  const [banReason, setBanReason] = useState('')
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -373,6 +377,20 @@ export default function TerminalChat() {
     }
   }
 
+  const handleAdminCommand = (command: string, ip?: string, reason?: string) => {
+    if (!isAdmin || !socket) return
+    
+    socket.emit('admin_command', {
+      command,
+      targetIP: ip,
+      reason: reason
+    })
+    
+    // Clear form
+    setTargetIP('')
+    setBanReason('')
+  }
+
   const formatTime = (date: Date | string | number) => {
     // Handle different timestamp formats
     let dateObj: Date
@@ -553,6 +571,69 @@ export default function TerminalChat() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Admin Panel */}
+      {isAdmin && (
+        <div className="fixed top-4 left-4 z-30">
+          <button
+            onClick={() => setShowAdminPanel(!showAdminPanel)}
+            className="bg-red-900/80 backdrop-blur-sm border border-red-500 text-red-400 px-3 py-2 text-xs font-mono hover:bg-red-800/80 transition-colors"
+          >
+            ADMIN PANEL
+          </button>
+          
+          {showAdminPanel && (
+            <div className="absolute top-12 left-0 bg-black/90 backdrop-blur-sm border border-red-500 rounded-lg p-4 w-80">
+              <div className="text-red-400 text-sm font-mono mb-4">🔨 ADMIN CONTROLS</div>
+              
+              {/* IP Ban Section */}
+              <div className="mb-4">
+                <div className="text-terminal-text text-xs mb-2">Ban IP Address:</div>
+                <input
+                  type="text"
+                  value={targetIP}
+                  onChange={(e) => setTargetIP(e.target.value)}
+                  placeholder="IP address"
+                  className="w-full bg-transparent border border-terminal-dim text-terminal-text font-mono text-xs p-2 mb-2"
+                />
+                <input
+                  type="text"
+                  value={banReason}
+                  onChange={(e) => setBanReason(e.target.value)}
+                  placeholder="Reason (optional)"
+                  className="w-full bg-transparent border border-terminal-dim text-terminal-text font-mono text-xs p-2 mb-2"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleAdminCommand('ban_ip', targetIP, banReason)}
+                    disabled={!targetIP.trim()}
+                    className="bg-red-600 text-white px-3 py-1 text-xs font-mono hover:bg-red-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                  >
+                    BAN IP
+                  </button>
+                  <button
+                    onClick={() => handleAdminCommand('unban_ip', targetIP)}
+                    disabled={!targetIP.trim()}
+                    className="bg-green-600 text-white px-3 py-1 text-xs font-mono hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                  >
+                    UNBAN IP
+                  </button>
+                </div>
+              </div>
+              
+              {/* Quick Actions */}
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => handleAdminCommand('list_bans')}
+                  className="bg-terminal-amber text-black px-3 py-1 text-xs font-mono hover:bg-yellow-400"
+                >
+                  LIST BANNED IPs
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
       

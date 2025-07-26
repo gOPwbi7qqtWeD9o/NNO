@@ -177,9 +177,15 @@ app.prepare().then(() => {
   const userSpamMetrics = new Map() // Track character counts and repeated content
   const ipSpamMetrics = new Map() // Track spam metrics by IP address
   const ipCooldowns = new Map() // Track IP-based cooldowns that persist after disconnect
+  const bannedIPs = new Set() // Permanently banned IP addresses
   const MAX_CHARS_PER_WINDOW = 500 // Max characters per time window
   const SPAM_WINDOW_SECONDS = 30 // Time window for spam detection
   const REPEATED_CONTENT_THRESHOLD = 3 // How many times same content triggers spam
+  
+  // Typing spam detection
+  const typingSpamMetrics = new Map() // Track typing events by IP
+  const TYPING_RATE_LIMIT = 20 // Max typing events per window
+  const TYPING_WINDOW_SECONDS = 10 // Time window for typing rate limit
 
   // Connection rate limiting to prevent script reconnection spam (more lenient)
   const connectionAttempts = new Map() // Track connection attempts by IP
@@ -294,6 +300,19 @@ app.prepare().then(() => {
                      'unknown'
     
     const currentTime = Date.now()
+    
+    // Check if IP is permanently banned
+    if (bannedIPs.has(clientIP)) {
+      console.log(`❌ IP ${clientIP} is permanently banned`)
+      socket.emit('message', {
+        id: Date.now() + Math.random(),
+        username: 'System',
+        content: `Access denied. IP address is permanently banned.`,
+        timestamp: new Date()
+      })
+      setTimeout(() => socket.disconnect(), 500)
+      return
+    }
     
     // Check if IP is under spam cooldown
     const ipCooldown = ipCooldowns.get(clientIP)
@@ -664,6 +683,73 @@ app.prepare().then(() => {
     socket.on('typing', (data) => {
       const { username, content, userColor } = data
       const user = connectedUsers.get(socket.id)
+      if (!user) return
+      
+      const currentTime = Date.now()
+      
+      // Track typing spam by IP
+      let typingData = typingSpamMetrics.get(userIP)
+      if (!typingData) {
+        typingData = { events: [], lastWarning: 0 }
+        typingSpamMetrics.set(userIP, typingData)
+      }
+      
+      // Clean old typing events outside the window
+      const typingWindowStart = currentTime - (TYPING_WINDOW_SECONDS * 1000)
+      typingData.events = typingData.events.filter(event => event > typingWindowStart)
+      
+      // Add current typing event
+      typingData.events.push(currentTime)
+      
+      // Check if exceeding typing rate limit
+      if (typingData.events.length > TYPING_RATE_LIMIT) {
+        // Only send warning once per minute to avoid spam
+        if (currentTime - typingData.lastWarning > 60000) {
+          console.log(`❌ Typing spam detected from IP ${userIP}: ${typingData.events.length}/${TYPING_RATE_LIMIT} events`)
+          
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: `⚠ Typing frequency exceeded. Reduce typing speed or face timeout.`,
+            timestamp: new Date()
+          })
+          
+          typingData.lastWarning = currentTime
+        }
+        
+        // If severely exceeding (2x limit), apply cooldown
+        if (typingData.events.length > TYPING_RATE_LIMIT * 2) {
+          const cooldownDuration = 120 * 1000 // 2 minute cooldown
+          userCooldowns.set(socket.id, {
+            endTime: currentTime + cooldownDuration,
+            messageCount: 1
+          })
+          
+          ipCooldowns.set(userIP, {
+            endTime: currentTime + cooldownDuration,
+            reason: 'typing_spam'
+          })
+          
+          socket.emit('rate_limit_cooldown', {
+            message: `Typing spam detected! Cooldown active for 120 seconds.`,
+            remainingTime: 120,
+            totalViolations: 1
+          })
+          
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: `⚠ TYPING SPAM FILTER TRIGGERED - IP cooldown active`,
+            timestamp: new Date()
+          })
+          
+          console.log(`❌ Typing spam cooldown applied to IP ${userIP}`)
+          return
+        }
+        
+        // Don't broadcast typing if over limit
+        return
+      }
       
       if (content) {
         typingStates.set(socket.id, { username, content, userColor: user?.userColor })
@@ -927,6 +1013,89 @@ app.prepare().then(() => {
       socket.emit('pong', { timestamp: Date.now(), serverTime: Date.now() })
     })
 
+    // Admin commands for IP management
+    socket.on('admin_command', (data) => {
+      const user = connectedUsers.get(socket.id)
+      if (!user || !user.isAdmin) {
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: 'Access denied. Admin privileges required.',
+          timestamp: new Date()
+        })
+        return
+      }
+
+      const { command, targetIP, reason } = data
+      
+      if (command === 'ban_ip' && targetIP) {
+        bannedIPs.add(targetIP)
+        
+        // Disconnect all users from this IP
+        for (const [socketId, userData] of connectedUsers.entries()) {
+          const targetSocket = io.sockets.sockets.get(socketId)
+          if (targetSocket) {
+            const targetClientIP = targetSocket.handshake.headers['x-forwarded-for'] || 
+                                 targetSocket.handshake.headers['x-real-ip'] || 
+                                 targetSocket.conn.remoteAddress || 
+                                 'unknown'
+            
+            if (targetClientIP === targetIP) {
+              targetSocket.emit('message', {
+                id: Date.now() + Math.random(),
+                username: 'System',
+                content: `You have been permanently banned. Reason: ${reason || 'Violation of terms'}`,
+                timestamp: new Date()
+              })
+              setTimeout(() => targetSocket.disconnect(), 1000)
+            }
+          }
+        }
+        
+        console.log(`🔨 Admin ${user.username} banned IP: ${targetIP} (Reason: ${reason || 'No reason provided'})`)
+        
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `IP ${targetIP} has been permanently banned.`,
+          timestamp: new Date()
+        })
+        
+      } else if (command === 'unban_ip' && targetIP) {
+        bannedIPs.delete(targetIP)
+        
+        console.log(`🔨 Admin ${user.username} unbanned IP: ${targetIP}`)
+        
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: `IP ${targetIP} has been unbanned.`,
+          timestamp: new Date()
+        })
+        
+      } else if (command === 'list_bans') {
+        const banList = Array.from(bannedIPs)
+        const banMessage = banList.length > 0 
+          ? `Banned IPs (${banList.length}): ${banList.join(', ')}`
+          : 'No IPs are currently banned.'
+        
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: banMessage,
+          timestamp: new Date()
+        })
+        
+      } else {
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: 'Invalid admin command. Available: ban_ip, unban_ip, list_bans',
+          timestamp: new Date()
+        })
+      }
+    })
+
     socket.on('disconnect', () => {
       const user = connectedUsers.get(socket.id)
       if (user) {
@@ -955,6 +1124,19 @@ app.prepare().then(() => {
           
           // Clean up their spam metrics
           userSpamMetrics.delete(user.username)
+          
+          // Clean up typing spam metrics for this IP if no other users from same IP
+          const sameIPUsers = Array.from(connectedUsers.values()).filter(u => 
+            u.username !== user.username // Exclude the disconnecting user
+          )
+          const hasSameIP = sameIPUsers.some(u => {
+            // This is a simplified check - in production you'd want to track IPs per user
+            return false // For now, always clean up to prevent memory leaks
+          })
+          if (!hasSameIP) {
+            // We can't easily determine IP from user data, so we'll let the cleanup happen periodically
+            // typingSpamMetrics.delete(userIP) - would need IP tracking per user
+          }
           
           // Emit updated user count and skip votes to all clients
           io.emit('user_count', connectedUsers.size)

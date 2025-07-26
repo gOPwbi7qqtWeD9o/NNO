@@ -64,14 +64,13 @@ export default function CryptEntrance() {
   }
 
   return (
-    <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative overflow-y-auto">
+    <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative">
       <Oscilloscope typingData={[]} currentTyping="" cryptLevel={0} />
       
-      <div className="min-h-screen flex items-center justify-center relative z-20 py-8">
-        <div className="max-w-2xl mx-auto px-4">
+      <div className="container mx-auto px-4 py-8 relative z-20 max-w-4xl">
           
           {/* Main Terminal Interface */}
-          <div className="bg-terminal-bg/90 backdrop-blur-sm border-2 border-terminal-amber p-8">
+          <div className="bg-terminal-bg/90 backdrop-blur-sm border-2 border-terminal-amber p-4 md:p-8">
             <div className="text-center mb-8">
               <div className="text-terminal-amber text-2xl font-bold mb-4">NEURAL CRYPT ACCESS TERMINAL</div>
               <div className="text-terminal-dim text-sm mb-2">Connection established to underground network</div>
@@ -160,7 +159,6 @@ export default function CryptEntrance() {
               <div>NEURAL KEY REQUIRED FOR DEEPER ACCESS</div>
             </div>
           </div>
-        </div>
       </div>
     </main>
   )
