@@ -277,6 +277,36 @@ app.prepare().then(() => {
   // Typing timeout system
   const TYPING_TIMEOUT_MS = 60000 // 1 minute timeout
   const TYPING_CLEANUP_INTERVAL = 30000 // Check every 30 seconds
+  
+  // Single typing message system to prevent bot spam
+  const userTypingStates = new Map() // Track one typing state per username (not socketId)
+  
+  // Word filtering system
+  const BANNED_WORDS = [
+    'nigger', 'n1gger', 'n!gger', 'nigga', 'n1gga', 'n!gga',
+    'faggot', 'f4ggot', 'f@ggot', 'fag', 'f4g', 'f@g',
+    'retard', 'r3tard', 'r3t4rd', 'retarded', 'r3t4rded',
+    'kike', 'k1ke', 'k!ke', 'spic', 'sp1c', 'sp!c',
+    'chink', 'ch1nk', 'ch!nk', 'gook', 'g00k', 'g0ok'
+  ]
+  
+  function filterOffensiveContent(text) {
+    if (!text || typeof text !== 'string') return text
+    
+    let filteredText = text
+    
+    // Filter banned words (case insensitive)
+    BANNED_WORDS.forEach(word => {
+      const regex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+      filteredText = filteredText.replace(regex, '*'.repeat(word.length))
+    })
+    
+    // Additional filtering for common bypass patterns
+    filteredText = filteredText.replace(/n[\s\-_\.]*i[\s\-_\.]*g[\s\-_\.]*g[\s\-_\.]*[e3][\s\-_\.]*r/gi, '******')
+    filteredText = filteredText.replace(/f[\s\-_\.]*a[\s\-_\.]*g[\s\-_\.]*g[\s\-_\.]*[o0][\s\-_\.]*t/gi, '******')
+    
+    return filteredText
+  }
 
   // Connection rate limiting to prevent script reconnection spam (more lenient)
   const connectionAttempts = new Map() // Track connection attempts by IP
@@ -558,6 +588,11 @@ app.prepare().then(() => {
       const username = user.username
       const userIP = socket.handshake.address
       const currentTime = Date.now()
+      
+      // Apply word filtering to the message content
+      if (message && message.content) {
+        message.content = filterOffensiveContent(message.content)
+      }
       
       // Check if user is currently in cooldown
       const cooldown = userCooldowns.get(socket.id)
@@ -1021,20 +1056,35 @@ app.prepare().then(() => {
         }
       }
       
-      if (content) {
+      // Apply word filtering to typing content
+      const filteredContent = content ? filterOffensiveContent(content) : ''
+      
+      if (filteredContent) {
+        // Replace any existing typing state for this username (one typing message per user)
+        userTypingStates.set(username, { 
+          username, 
+          content: filteredContent, 
+          userColor: user?.userColor,
+          lastActivity: currentTime,
+          socketId: socket.id
+        })
+        
+        // Also maintain socketId-based tracking for cleanup
         typingStates.set(socket.id, { 
           username, 
-          content, 
+          content: filteredContent, 
           userColor: user?.userColor,
           lastActivity: currentTime,
           socketId: socket.id
         })
       } else {
+        // Clear typing state when user stops typing
+        userTypingStates.delete(username)
         typingStates.delete(socket.id)
       }
       
-      // Broadcast typing state to other clients (not the sender)
-      socket.broadcast.emit('typing', { username, content, userColor: user?.userColor })
+      // Broadcast filtered typing state to other clients (not the sender)
+      socket.broadcast.emit('typing', { username, content: filteredContent, userColor: user?.userColor })
     })
 
     // Media player synchronization events
@@ -1306,7 +1356,7 @@ app.prepare().then(() => {
         return
       }
 
-      const { command, targetIP, reason } = data
+      const { command, targetIP, reason, targetUsername } = data
       
       if (command === 'ban_ip' && targetIP) {
         bannedIPs.add(targetIP)
@@ -1362,15 +1412,15 @@ app.prepare().then(() => {
         
         sendAdminMessage(userMessage)
         
-      } else if (command === 'get_user_ip' && data.targetUsername) {
+      } else if (command === 'get_user_ip' && targetUsername) {
         const targetUser = Array.from(connectedUsers.values()).find(userData => 
-          userData.username.toLowerCase() === data.targetUsername.toLowerCase()
+          userData.username.toLowerCase() === targetUsername.toLowerCase()
         )
         
         if (targetUser) {
           sendAdminMessage(`User ${targetUser.username} IP: ${targetUser.ipAddress}`)
         } else {
-          sendAdminMessage(`User ${data.targetUsername} not found.`)
+          sendAdminMessage(`User ${targetUsername} not found. Connected users: ${Array.from(connectedUsers.values()).map(u => u.username).join(', ')}`)
         }
         
       } else {
@@ -1384,6 +1434,7 @@ app.prepare().then(() => {
         // Remove from current connections immediately
         connectedUsers.delete(socket.id)
         typingStates.delete(socket.id)
+        userTypingStates.delete(user.username) // Clean up username-based typing state
         
         // Clean up rate limit cooldown for this socket
         userCooldowns.delete(socket.id)
@@ -1519,10 +1570,22 @@ app.prepare().then(() => {
     const now = Date.now()
     const expiredTyping = []
     
+    // Clean up socketId-based typing states
     for (const [socketId, typingData] of typingStates.entries()) {
       if (now - typingData.lastActivity > TYPING_TIMEOUT_MS) {
         expiredTyping.push({ socketId, typingData })
         typingStates.delete(socketId)
+      }
+    }
+    
+    // Clean up username-based typing states
+    for (const [username, typingData] of userTypingStates.entries()) {
+      if (now - typingData.lastActivity > TYPING_TIMEOUT_MS) {
+        // Check if not already added from socketId cleanup
+        if (!expiredTyping.find(item => item.typingData.username === username)) {
+          expiredTyping.push({ socketId: typingData.socketId, typingData })
+        }
+        userTypingStates.delete(username)
       }
     }
     
