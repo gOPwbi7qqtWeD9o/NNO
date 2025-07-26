@@ -389,30 +389,29 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
                       videoDuration: Math.floor(videoDuration)
                     })
                     
-                    // 4. ULTRA STRICT duration validation - must be at least 95% complete
+                    // 4. Reasonable duration validation - must be at least 90% complete
                     if (duration > 0) {
                       const timeFromEnd = duration - currentTime
                       const completionPercentage = (currentTime / duration) * 100
                       
-                      // Must be at least 95% complete AND within 3 seconds of end
-                      if (completionPercentage < 95 || timeFromEnd > 3) {
+                      // Must be at least 90% complete OR within 5 seconds of end (more lenient)
+                      if (completionPercentage < 90 && timeFromEnd > 5) {
                         console.log(`🎯 End event BLOCKED - insufficient completion: ${Math.floor(completionPercentage)}%, ${Math.floor(timeFromEnd)}s remaining`)
                         return
                       }
                       
                       console.log(`✅ Duration validation passed: ${Math.floor(completionPercentage)}% complete, ${Math.floor(timeFromEnd)}s remaining`)
                     } else {
-                      console.log('🎯 End event blocked - no duration available for validation')
-                      return
+                      console.log('⚠️ No duration available, allowing end event (YouTube API limitation)')
                     }
                     
-                    // 5. Check for suspicious state patterns (rapid transitions)
-                    const recentStates = playerStateHistory.slice(-3)
-                    const hasRapidTransitions = recentStates.length >= 3 && 
-                      recentStates.some((state, index) => index > 0 && Math.abs(state - recentStates[index - 1]) > 2)
+                    // 5. Check for extremely suspicious state patterns (very lenient)
+                    const recentStates = playerStateHistory.slice(-5)
+                    const hasExtremeSuspiciousActivity = recentStates.length >= 5 && 
+                      recentStates.filter((state, index) => index > 0 && Math.abs(state - recentStates[index - 1]) > 10).length >= 3
                     
-                    if (hasRapidTransitions) {
-                      console.log('🎯 End event blocked - suspicious rapid state transitions detected')
+                    if (hasExtremeSuspiciousActivity) {
+                      console.log('🎯 End event blocked - extreme suspicious activity detected')
                       return
                     }
                     
