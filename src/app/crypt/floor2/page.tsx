@@ -108,7 +108,7 @@ export default function CryptFloor2() {
   // Show completion state if Floor 2 is completed
   if (isCompleted) {
     return (
-      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative">
+      <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative overflow-y-auto">
         <Oscilloscope typingData={[]} currentTyping="" cryptLevel={2} />
         <div className="container mx-auto px-4 py-8 relative z-20">
           {/* Header */}
@@ -177,7 +177,7 @@ export default function CryptFloor2() {
   }
 
   return (
-    <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative">
+    <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative overflow-y-auto">
       <Oscilloscope typingData={[]} currentTyping="" cryptLevel={2} />
       <div className="container mx-auto px-4 py-8 relative z-20">
         {/* Header */}

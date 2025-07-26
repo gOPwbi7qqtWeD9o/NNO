@@ -170,8 +170,14 @@ app.prepare().then(() => {
   
   // Chat rate limiting system
   const messageCooldowns = new Map() // Track user message timestamps
-  const MESSAGE_RATE_LIMIT = 15 // Max messages per time window (increased for active chat)
+  const MESSAGE_RATE_LIMIT = 8 // Max messages per time window (reduced for spam prevention)
   const RATE_LIMIT_WINDOW_SECONDS = 10 // Time window in seconds
+  
+  // Enhanced spam detection
+  const userSpamMetrics = new Map() // Track character counts and repeated content
+  const MAX_CHARS_PER_WINDOW = 500 // Max characters per time window
+  const SPAM_WINDOW_SECONDS = 30 // Time window for spam detection
+  const REPEATED_CONTENT_THRESHOLD = 3 // How many times same content triggers spam
 
   // Connection rate limiting to prevent script reconnection spam (more lenient)
   const connectionAttempts = new Map() // Track connection attempts by IP
@@ -434,6 +440,93 @@ app.prepare().then(() => {
           totalViolations: cooldown.messageCount
         })
         return // Block the message completely
+      }
+      
+      // Enhanced spam detection - check before rate limiting
+      if (message && message.content && typeof message.content === 'string') {
+        const messageContent = message.content.trim()
+        const messageLength = messageContent.length
+        
+        // Get or create spam metrics for this user
+        let spamMetrics = userSpamMetrics.get(username)
+        if (!spamMetrics) {
+          spamMetrics = {
+            messages: [],
+            contentHistory: [],
+            totalChars: 0,
+            lastWindowReset: currentTime
+          }
+          userSpamMetrics.set(username, spamMetrics)
+        }
+        
+        // Clean old messages outside the spam window
+        const spamWindowStart = currentTime - (SPAM_WINDOW_SECONDS * 1000)
+        spamMetrics.messages = spamMetrics.messages.filter(msg => msg.timestamp > spamWindowStart)
+        spamMetrics.contentHistory = spamMetrics.contentHistory.filter(content => content.timestamp > spamWindowStart)
+        
+        // Recalculate total characters in current window
+        spamMetrics.totalChars = spamMetrics.messages.reduce((sum, msg) => sum + msg.length, 0)
+        
+        // Check character spam (too many characters in time window)
+        if (spamMetrics.totalChars + messageLength > MAX_CHARS_PER_WINDOW) {
+          console.log(`❌ Character spam detected from ${username}: ${spamMetrics.totalChars + messageLength}/${MAX_CHARS_PER_WINDOW} chars`)
+          
+          const cooldownDuration = 60 * 1000 // 60 second cooldown for character spam
+          userCooldowns.set(socket.id, {
+            endTime: currentTime + cooldownDuration,
+            messageCount: 1
+          })
+          
+          socket.emit('rate_limit_cooldown', {
+            message: `Character spam detected! Cooldown active for 60 seconds.`,
+            remainingTime: 60,
+            totalViolations: 1
+          })
+          
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: `⚠ SPAM FILTER TRIGGERED - Excessive character transmission detected`,
+            timestamp: new Date()
+          })
+          
+          return
+        }
+        
+        // Check repeated content spam
+        const similarContent = spamMetrics.contentHistory.filter(content => 
+          content.text.toLowerCase() === messageContent.toLowerCase()
+        ).length
+        
+        if (similarContent >= REPEATED_CONTENT_THRESHOLD) {
+          console.log(`❌ Repeated content spam detected from ${username}: "${messageContent.substring(0, 50)}..."`)
+          
+          const cooldownDuration = 120 * 1000 // 2 minute cooldown for repeated content
+          userCooldowns.set(socket.id, {
+            endTime: currentTime + cooldownDuration,
+            messageCount: 1
+          })
+          
+          socket.emit('rate_limit_cooldown', {
+            message: `Repeated content spam detected! Cooldown active for 120 seconds.`,
+            remainingTime: 120,
+            totalViolations: 1
+          })
+          
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: `⚠ SPAM FILTER TRIGGERED - Repeated transmission pattern detected`,
+            timestamp: new Date()
+          })
+          
+          return
+        }
+        
+        // Add this message to spam metrics
+        spamMetrics.messages.push({ length: messageLength, timestamp: currentTime })
+        spamMetrics.contentHistory.push({ text: messageContent, timestamp: currentTime })
+        spamMetrics.totalChars += messageLength
       }
       
       // Rate limiting check
@@ -802,6 +895,9 @@ app.prepare().then(() => {
           
           // Clean up their message rate limit history
           messageCooldowns.delete(user.username)
+          
+          // Clean up their spam metrics
+          userSpamMetrics.delete(user.username)
           
           // Emit updated user count and skip votes to all clients
           io.emit('user_count', connectedUsers.size)

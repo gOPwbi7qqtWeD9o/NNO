@@ -83,7 +83,7 @@ export default function CryptFloor1() {
   }
 
   return (
-    <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative">
+    <main className="min-h-screen bg-terminal-bg text-terminal-text font-mono relative overflow-y-auto">
       <Oscilloscope typingData={[]} currentTyping="" cryptLevel={1} />
       <div className="container mx-auto px-4 py-8 relative z-20">
         {/* Header */}
