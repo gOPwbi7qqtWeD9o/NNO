@@ -103,9 +103,9 @@ class RateLimiter {
   }
 }
 
-// Rate limiters
+// Rate limiters (very lenient for humans)
 const messageRateLimit = new RateLimiter(30, 60000) // 30 messages per minute
-const typingRateLimit = new RateLimiter(60, 60000)  // 60 typing events per minute
+const typingRateLimit = new RateLimiter(300, 60000)  // 300 typing events per minute (5x increase)
 const joinRateLimit = new RateLimiter(5, 60000)     // 5 joins per minute
 
 // Advanced bot detection functions
@@ -163,7 +163,7 @@ function detectScrollingPattern(contents) {
 }
 
 function detectTypingRhythm(timestamps) {
-  if (timestamps.length < 8) return { suspicious: false, score: 0 } // Need more data
+  if (timestamps.length < 25) return { suspicious: false, score: 0 } // Need much more data
   
   // Calculate intervals between typing events
   const intervals = []
@@ -171,12 +171,12 @@ function detectTypingRhythm(timestamps) {
     intervals.push(timestamps[i] - timestamps[i - 1])
   }
   
-  // Check for too-consistent intervals (bot behavior)
+  // Check for too-consistent intervals (only perfect robotic timing)
   const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length
   let consistentIntervals = 0
   
   intervals.forEach(interval => {
-    if (Math.abs(interval - avgInterval) < 30) { // Within 30ms = very consistent (tightened)
+    if (Math.abs(interval - avgInterval) < 20) { // Within 20ms = extremely consistent
       consistentIntervals++
     }
   })
@@ -184,8 +184,8 @@ function detectTypingRhythm(timestamps) {
   const consistencyRatio = consistentIntervals / intervals.length
   
   return {
-    suspicious: consistencyRatio > 0.9 && avgInterval < 100, // 90% consistent + extremely fast (stricter)
-    score: consistencyRatio > 0.9 ? 10 : (consistencyRatio > 0.8 ? 3 : 0) // Reduced scores
+    suspicious: consistencyRatio > 0.98 && avgInterval < 50, // 98% consistent + extremely fast (only obvious bots)
+    score: consistencyRatio > 0.98 ? 2 : 0 // Minimal scoring
   }
 }
 
@@ -263,16 +263,16 @@ app.prepare().then(() => {
   const SPAM_WINDOW_SECONDS = 30 // Time window for spam detection
   const REPEATED_CONTENT_THRESHOLD = 3 // How many times same content triggers spam
   
-  // Typing spam detection
+  // Typing spam detection (very lenient for humans)
   const typingSpamMetrics = new Map() // Track typing events by IP
-  const TYPING_RATE_LIMIT = 50 // Max typing events per window (increased)
+  const TYPING_RATE_LIMIT = 500 // Max typing events per window (massive increase for fast typists)
   const TYPING_WINDOW_SECONDS = 10 // Time window for typing rate limit
   
-  // Advanced bot detection
+  // Advanced bot detection (extremely lenient for humans)
   const botDetectionMetrics = new Map() // Track sophisticated bot patterns by IP
-  const SIMILARITY_THRESHOLD = 0.85 // How similar content needs to be to flag as bot (increased)
-  const PATTERN_WINDOW_SECONDS = 300 // 5 minute window for pattern analysis (increased)
-  const BOT_SCORE_THRESHOLD = 100 // Cumulative bot score before action (doubled)
+  const SIMILARITY_THRESHOLD = 0.95 // How similar content needs to be to flag as bot (nearly identical only)
+  const PATTERN_WINDOW_SECONDS = 600 // 10 minute window for pattern analysis (longer)
+  const BOT_SCORE_THRESHOLD = 1000 // Cumulative bot score before action (massive increase)
   
   // Typing timeout system
   const TYPING_TIMEOUT_MS = 60000 // 1 minute timeout
@@ -821,7 +821,7 @@ app.prepare().then(() => {
       }
       
       // Check if exceeding typing rate limit (only apply severe penalties for extreme spam)
-      if (typingData.events.length > TYPING_RATE_LIMIT * 3) { // 150+ events in 10s = bot behavior
+      if (typingData.events.length > TYPING_RATE_LIMIT * 3) { // 450+ events in 10s = obvious bot behavior
         console.log(`❌ Extreme typing spam detected from IP ${userIP}: ${typingData.events.length} events`)
         
         const cooldownDuration = 120 * 1000 // 2 minute cooldown
@@ -852,70 +852,100 @@ app.prepare().then(() => {
         return
       }
       
-      // Warn for high typing frequency but still allow it
-      if (typingData.events.length > TYPING_RATE_LIMIT && currentTime - typingData.lastWarning > 60000) {
-        console.log(`⚠ High typing frequency from IP ${userIP}: ${typingData.events.length}/${TYPING_RATE_LIMIT} events`)
+      // Warn for high typing frequency but still allow it (much more lenient)
+      if (typingData.events.length > TYPING_RATE_LIMIT * 1.5 && currentTime - typingData.lastWarning > 300000) {
+        console.log(`⚠ Very high typing frequency from IP ${userIP}: ${typingData.events.length}/${TYPING_RATE_LIMIT * 1.5} events`)
         
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
-          content: `⚠ High typing frequency detected. Please moderate your typing speed.`,
+          content: `⚠ Extremely high typing frequency detected. If you're human, this is just a notice.`,
           timestamp: new Date()
         })
         
         typingData.lastWarning = currentTime
       }
       
-      // Advanced bot detection algorithms (relaxed for human users)
-      if (content && botData.contents.length >= 5) { // Need more samples
+      // Advanced bot detection algorithms (temporarily disabled for testing)
+      if (false && content && botData.contents.length >= 20) { // Need many more samples
         let currentBotScore = 0
+        let redFlags = 0 // Count simultaneous red flags
         
-        // 1. Content similarity detection for slight variations (stricter threshold)
-        const recentContents = botData.contents.slice(-8) // Check last 8 messages
-        let similarityMatches = 0
+        // 1. Content similarity detection (only nearly identical content)
+        const recentContents = botData.contents.slice(-20) // Check last 20 messages
+        let identicalMatches = 0
         for (let i = 0; i < recentContents.length - 1; i++) {
           for (let j = i + 1; j < recentContents.length; j++) {
             const similarity = calculateStringSimilarity(recentContents[i], recentContents[j])
             if (similarity > SIMILARITY_THRESHOLD) {
-              similarityMatches++
-              currentBotScore += Math.floor(similarity * 5) // Reduced scoring
+              identicalMatches++
+              currentBotScore += 1 // Minimal scoring
             }
           }
         }
         
-        // Only flag if multiple similar messages
-        if (similarityMatches < 2) {
-          currentBotScore = Math.max(0, currentBotScore - 10) // Reduce score for low similarity
+        // Only flag if many identical messages (5+ matches)
+        if (identicalMatches >= 5) {
+          redFlags++
+          currentBotScore += 5
+        } else {
+          currentBotScore = Math.max(0, currentBotScore - 5) // Reduce score for natural variation
         }
         
-        // 2. Scrolling pattern detection (more samples needed)
-        if (botData.contents.length >= 8 && detectScrollingPattern(botData.contents.slice(-15))) {
-          currentBotScore += 25 // High score for scrolling patterns
-          console.log(`🤖 Scrolling pattern detected from IP ${userIP}`)
+        // 2. Scrolling pattern detection (need perfect patterns)
+        if (botData.contents.length >= 25) {
+          const perfectScrolling = detectScrollingPattern(botData.contents.slice(-25))
+          if (perfectScrolling) {
+            // Require additional verification - check for 10+ consecutive shifts
+            let consecutiveShifts = 0
+            const recent = botData.contents.slice(-15)
+            for (let i = 0; i < recent.length - 1; i++) {
+              if (recent[i].length > 3 && recent[i + 1].length > 3) {
+                if (recent[i].substring(1) === recent[i + 1].substring(0, recent[i + 1].length - 1)) {
+                  consecutiveShifts++
+                } else {
+                  break
+                }
+              }
+            }
+            
+            if (consecutiveShifts >= 10) {
+              redFlags++
+              currentBotScore += 10
+              console.log(`🤖 Perfect scrolling pattern detected from IP ${userIP}: ${consecutiveShifts} shifts`)
+            }
+          }
         }
         
-        // 3. Typing rhythm analysis (much stricter)
-        const rhythmAnalysis = detectTypingRhythm(botData.timestamps.slice(-15))
+        // 3. Typing rhythm analysis (only perfect robotic timing)
+        const rhythmAnalysis = detectTypingRhythm(botData.timestamps.slice(-30))
         if (rhythmAnalysis.suspicious) {
+          redFlags++
           currentBotScore += rhythmAnalysis.score
-          console.log(`🤖 Suspicious typing rhythm from IP ${userIP}, score: ${rhythmAnalysis.score}`)
+          console.log(`🤖 Perfect robotic timing from IP ${userIP}, score: ${rhythmAnalysis.score}`)
         }
         
-        // 4. Length consistency check (stricter requirements)
-        if (botData.contents.length >= 8) {
-          const lengths = botData.contents.slice(-8).map(c => c.length)
+        // 4. Length consistency check (extremely strict)
+        if (botData.contents.length >= 20) {
+          const lengths = botData.contents.slice(-20).map(c => c.length)
           const avgLength = lengths.reduce((a, b) => a + b, 0) / lengths.length
-          let consistentLengths = 0
+          let perfectLengths = 0
           
           lengths.forEach(len => {
-            if (Math.abs(len - avgLength) <= 1) { // Within 1 character = extremely consistent
-              consistentLengths++
+            if (Math.abs(len - avgLength) === 0) { // Exactly same length
+              perfectLengths++
             }
           })
           
-          if (consistentLengths >= 6) { // 6/8 messages same length
-            currentBotScore += 8 // Reduced score
+          if (perfectLengths >= 15) { // 15/20 messages exactly same length
+            redFlags++
+            currentBotScore += 3
           }
+        }
+        
+        // Only apply score if multiple red flags present
+        if (redFlags < 2) {
+          currentBotScore = Math.floor(currentBotScore * 0.2) // Reduce to 20% if not multiple flags
         }
         
         // Update cumulative bot score
@@ -969,13 +999,13 @@ app.prepare().then(() => {
             socket.disconnect(true)
             return
           }
-        } else if (botData.botScore >= BOT_SCORE_THRESHOLD * 0.8) {
-          // Warning at 80% of threshold (higher)
-          if (currentTime - botData.lastBotCheck > 120000) { // Only warn once per 2 minutes
+        } else if (botData.botScore >= BOT_SCORE_THRESHOLD * 0.9) {
+          // Warning at 90% of threshold (much higher)
+          if (currentTime - botData.lastBotCheck > 300000) { // Only warn once per 5 minutes
             socket.emit('message', {
               id: Date.now() + Math.random(),
               username: 'System',
-              content: `⚠ Unusual patterns detected. If you're human, please continue normally.`,
+              content: `⚠ Automated behavior patterns detected over extended period.`,
               timestamp: new Date()
             })
             
@@ -984,9 +1014,9 @@ app.prepare().then(() => {
           }
         }
         
-        // Decay bot score over time to allow for false positives
-        if (currentTime - botData.lastBotCheck > 180000) { // Every 3 minutes
-          botData.botScore = Math.max(0, botData.botScore - 8) // Faster decay
+        // Aggressive score decay to heavily favor humans
+        if (currentTime - botData.lastBotCheck > 60000) { // Every 1 minute
+          botData.botScore = Math.max(0, botData.botScore - 15) // Much faster decay
           botData.lastBotCheck = currentTime
         }
       }
