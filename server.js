@@ -356,46 +356,60 @@ app.prepare().then(() => {
     }, 30000)
   }
   
-  // Real terminal using child_process
-  const { spawn } = require('child_process')
+  // Real terminal using node-pty
+  let pty
+  try {
+    pty = require('node-pty')
+  } catch (error) {
+    console.log('node-pty not available, terminal functionality disabled')
+    pty = null
+  }
+  
   let sharedTerminal = null
   let terminalListenersSetup = false
   
   function createSharedTerminal() {
-    if (sharedTerminal) return sharedTerminal
-    
-    // Spawn a real shell (cmd on Windows, bash on Unix)
-    const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash'
-    const shellArgs = process.platform === 'win32' ? [] : []
-    
-    sharedTerminal = spawn(shell, shellArgs, {
-      cwd: process.cwd(),
-      env: process.env
-    })
-    
-    console.log('Shared terminal created with PID:', sharedTerminal.pid)
-    
-    // Set up output listeners only once
-    if (!terminalListenersSetup) {
-      sharedTerminal.stdout.on('data', (data) => {
-        const output = data.toString()
-        io.emit('terminal_output', { output })
-      })
-      
-      sharedTerminal.stderr.on('data', (data) => {
-        const output = data.toString()
-        io.emit('terminal_output', { output })
-      })
-      
-      terminalListenersSetup = true
+    if (!pty) {
+      console.log('Terminal not available - node-pty not installed')
+      return null
     }
     
-    // Handle terminal exit
-    sharedTerminal.on('exit', (code) => {
-      console.log('Shared terminal exited with code:', code)
-      sharedTerminal = null
-      terminalListenersSetup = false
-    })
+    if (sharedTerminal) return sharedTerminal
+    
+    // Spawn a real PTY (pseudo terminal)
+    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash'
+    
+    try {
+      sharedTerminal = pty.spawn(shell, [], {
+        name: 'xterm-color',
+        cols: 80,
+        rows: 24,
+        cwd: process.cwd(),
+        env: process.env
+      })
+      
+      console.log('Shared terminal created with PID:', sharedTerminal.pid)
+      
+      // Set up output listeners only once
+      if (!terminalListenersSetup) {
+        sharedTerminal.onData((data) => {
+          io.emit('terminal_output', { output: data })
+        })
+        
+        terminalListenersSetup = true
+      }
+      
+      // Handle terminal exit
+      sharedTerminal.onExit((code) => {
+        console.log('Shared terminal exited with code:', code.exitCode)
+        sharedTerminal = null
+        terminalListenersSetup = false
+      })
+      
+    } catch (error) {
+      console.error('Failed to create terminal:', error)
+      return null
+    }
     
     return sharedTerminal
   }
@@ -1836,14 +1850,21 @@ app.prepare().then(() => {
       // Get or create shared terminal
       const terminal = createSharedTerminal()
       
+      if (!terminal) {
+        socket.emit('terminal_output', { 
+          output: 'Terminal not available - node-pty not installed\r\n' 
+        })
+        return
+      }
+      
       // Broadcast command to all users
       io.emit('terminal_output', { 
-        output: `[${username}] $ ${command}`, 
+        output: `[${username}] $ ${command}\r\n`, 
         fromUser: username 
       })
       
       // Send command to real terminal
-      terminal.stdin.write(command + '\n')
+      terminal.write(command + '\r')
     })
 
     socket.on('disconnect', () => {
