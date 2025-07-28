@@ -25,7 +25,6 @@ export default function TerminalComponent({ socket, isVisible, onClose }: Termin
         background: '#000000',
         foreground: '#00ff41',
         cursor: '#00ff41',
-        selection: '#ffffff40',
       },
       fontSize: 14,
       fontFamily: '"Courier New", Courier, monospace',

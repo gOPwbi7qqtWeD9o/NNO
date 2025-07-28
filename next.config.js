@@ -15,10 +15,6 @@ const nextConfig = {
   // Optimize images
   images: {
     unoptimized: true
-  },
-  // Disable ESLint during builds when DISABLE_ESLINT is set
-  eslint: {
-    ignoreDuringBuilds: process.env.DISABLE_ESLINT === 'true',
   }
 }
 

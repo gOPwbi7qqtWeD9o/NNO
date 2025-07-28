@@ -16,21 +16,17 @@ WORKDIR /app
 # Copy package files first for better caching
 COPY package*.json ./
 
-# Install dependencies with verbose logging
+# Install dependencies
 RUN npm install --verbose
 
 # Copy application source code
 COPY . .
 
-# Debug: List what we have
-RUN ls -la
-
 # Set NODE_ENV for build
 ENV NODE_ENV=production
-ENV DISABLE_ESLINT=true
 
-# Build with ESLint disabled
-RUN npm run build:production
+# Build the application
+RUN npm run build
 
 # Clean up dev dependencies after successful build
 RUN npm prune --omit=dev
