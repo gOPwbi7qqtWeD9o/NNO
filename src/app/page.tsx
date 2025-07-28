@@ -110,6 +110,12 @@ export default function TerminalChat() {
   const [targetUsername, setTargetUsername] = useState('')
   const [adminMessages, setAdminMessages] = useState<Message[]>([])
   const [typingTimeoutRef, setTypingTimeoutRef] = useState<NodeJS.Timeout | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Simple scroll to bottom without detection - just scroll on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
 
   // Handle page visibility changes to prevent disconnections from tab throttling
@@ -324,21 +330,17 @@ export default function TerminalChat() {
       
       const newSocket = io({
         // Optimized for Cloudflare compatibility and stability
-        timeout: 120000,                   // 2 minutes - matches server pingTimeout
+        timeout: 60000,                    // 1 minute timeout - less aggressive
         forceNew: false,                   // Reuse existing connection if possible
         reconnection: true,                // Enable automatic reconnection
-        reconnectionDelay: 2000,           // Wait 2 seconds before first reconnection
-        reconnectionDelayMax: 10000,       // Max 10 seconds between attempts
-        reconnectionAttempts: 10,          // Fewer attempts but longer delays
+        reconnectionDelay: 5000,           // Wait 5 seconds before first reconnection
+        reconnectionDelayMax: 30000,       // Max 30 seconds between attempts
+        reconnectionAttempts: 5,           // Fewer reconnection attempts
         transports: ['websocket', 'polling'], // WebSocket first, polling fallback
-        // Additional stability settings for Cloudflare
+        // Stability settings optimized for less aggressive reconnection
         autoConnect: true,                 // Connect automatically
         upgrade: true,                     // Allow WebSocket upgrades
-        rememberUpgrade: true,             // Remember successful WebSocket upgrade
-        rejectUnauthorized: false,         // Allow self-signed certificates in dev
-        // Cloudflare-specific optimizations
-        timestampRequests: true,           // Add timestamps to requests
-        timestampParam: 't',               // Timestamp parameter name
+        rememberUpgrade: true              // Remember successful WebSocket upgrade
       })
       
       newSocket.on('connect', () => {
@@ -362,26 +364,18 @@ export default function TerminalChat() {
         console.log(`Health check response: ${data.status}, Server time: ${data.serverTime}, Users: ${data.connectedUsers}`)
       })
 
-      // Periodic health checks to maintain connection stability
-      const healthCheckInterval = setInterval(() => {
-        if (newSocket.connected) {
-          newSocket.emit('health_check')
-        }
-      }, 120000) // Every 2 minutes - less frequent
-
-      // Store interval ID for cleanup
-      const pingInterval = setInterval(() => {
+      // Single keepalive interval - reduced frequency to prevent spam
+      const keepaliveInterval = setInterval(() => {
         if (newSocket.connected) {
           newSocket.emit('ping', { timestamp: Date.now() })
         }
-      }, 60000) // Every 60 seconds - less frequent
+      }, 300000) // Every 5 minutes - much less frequent
 
       newSocket.on('disconnect', (reason) => {
         console.log('Disconnected:', reason)
         setIsConnected(false)
-        // Cleanup intervals
-        clearInterval(healthCheckInterval)
-        clearInterval(pingInterval)
+        // Cleanup interval
+        clearInterval(keepaliveInterval)
         // Don't clear socket here - let reconnection handle it
       })
 
@@ -972,6 +966,8 @@ export default function TerminalChat() {
               </span>
             </div>
           ))}
+          
+          <div ref={messagesEndRef} />
         </div>
         
         <div className="flex items-center mt-4 pt-4 border-t border-gray-800 bg-black/60 backdrop-blur-sm rounded p-3">
