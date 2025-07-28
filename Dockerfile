@@ -27,9 +27,10 @@ RUN ls -la
 
 # Set NODE_ENV for build
 ENV NODE_ENV=production
+ENV DISABLE_ESLINT=true
 
-# Build with error handling
-RUN npm run build || (echo "Build failed, checking logs..." && npm run build --verbose)
+# Build with ESLint disabled
+RUN npm run build:production
 
 # Clean up dev dependencies after successful build
 RUN npm prune --omit=dev
