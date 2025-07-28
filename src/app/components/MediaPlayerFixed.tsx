@@ -79,8 +79,8 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
         // On mobile, position at bottom center
         setPosition({ x: 10, y: window.innerHeight - 180 })
       } else {
-        // Desktop positioning
-        setPosition({ x: window.innerWidth - 450, y: 100 })
+        // Desktop positioning - place to the left of user count/buttons (which are ~140px wide + margin)
+        setPosition({ x: window.innerWidth - 580, y: 16 })
       }
       
       return () => window.removeEventListener('resize', checkMobile)

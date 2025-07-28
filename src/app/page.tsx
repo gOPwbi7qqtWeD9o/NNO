@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import io, { Socket } from 'socket.io-client'
 import Oscilloscope from './components/Oscilloscope'
 import MediaPlayerFixed from './components/MediaPlayerFixed'
+import Terminal from './components/Terminal'
 import { sanitizeMessage, sanitizeUsername } from './utils/security'
 
 interface Message {
@@ -20,6 +21,25 @@ interface TypingUser {
   content: string
   position?: number
   userColor?: string
+}
+
+interface PollOption {
+  id: number
+  text: string
+  votes: number
+  percentage?: number
+}
+
+interface Poll {
+  id: string
+  question: string
+  options: PollOption[]
+  createdBy: string
+  createdAt: Date
+  expiresAt: Date
+  active: boolean
+  totalVotes?: number
+  winners?: string[]
 }
 
 const USER_COLORS = [
@@ -48,10 +68,24 @@ export default function TerminalChat() {
   const router = useRouter()
   const [socket, setSocket] = useState<Socket | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const MAX_MESSAGES = 50 // Keep only last 50 messages to prevent lag
+  
+  // Helper function to add messages with auto-deletion
+  const addMessage = (message: Message) => {
+    setMessages(prev => {
+      const newMessages = [...prev, message]
+      // Keep only the last 50 messages
+      if (newMessages.length > MAX_MESSAGES) {
+        return newMessages.slice(-MAX_MESSAGES)
+      }
+      return newMessages
+    })
+  }
   const [currentMessage, setCurrentMessage] = useState('')
   const [username, setUsername] = useState('')
   const [userColor, setUserColor] = useState('steel')
   const [isConnected, setIsConnected] = useState(false)
+  const [showTerminal, setShowTerminal] = useState(false)
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([])
   const [userCount, setUserCount] = useState<number>(0)
   const [userPositions, setUserPositions] = useState<Map<string, number>>(new Map())
@@ -71,6 +105,8 @@ export default function TerminalChat() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [neuralNodePresent, setNeuralNodePresent] = useState(false)
   const [showAdminPanel, setShowAdminPanel] = useState(false)
+  const [currentPoll, setCurrentPoll] = useState<Poll | null>(null)
+  const [userVote, setUserVote] = useState<number | null>(null)
   const [adminCommand, setAdminCommand] = useState('')
   const [targetIP, setTargetIP] = useState('')
   const [banReason, setBanReason] = useState('')
@@ -169,7 +205,7 @@ export default function TerminalChat() {
         if (message.username === username) {
           return
         }
-        setMessages(prev => [...prev, message])
+        addMessage(message)
       })
 
       socket.on('typing', (data: { username: string, content: string, userColor?: string }) => {
@@ -232,7 +268,7 @@ export default function TerminalChat() {
           timestamp: new Date(),
           userColor: 'toxic'
         }
-        setMessages(prev => [...prev, joinMessage])
+        addMessage(joinMessage)
       })
 
       socket.on('user_left', (data: { username: string, userColor?: string }) => {
@@ -248,7 +284,7 @@ export default function TerminalChat() {
           timestamp: new Date(),
           userColor: 'ember'
         }
-        setMessages(prev => [...prev, leftMessage])
+        addMessage(leftMessage)
       })
 
       socket.on('user_count', (count: number) => {
@@ -282,6 +318,29 @@ export default function TerminalChat() {
         }, 1000)
       })
 
+      // Poll event listeners
+      socket.on('poll_created', (poll: Poll) => {
+        setCurrentPoll(poll)
+        setUserVote(null) // Reset user vote for new poll
+        console.log('Poll created:', poll)
+      })
+
+      socket.on('poll_updated', (poll: Poll) => {
+        setCurrentPoll(poll)
+        console.log('Poll updated:', poll)
+      })
+
+      socket.on('poll_closed', (poll: Poll) => {
+        setCurrentPoll(poll)
+        console.log('Poll closed:', poll)
+      })
+
+      socket.on('poll_cleared', () => {
+        setCurrentPoll(null)
+        setUserVote(null)
+        console.log('Poll cleared')
+      })
+
       return () => {
         socket.off('message')
         socket.off('typing')
@@ -289,6 +348,10 @@ export default function TerminalChat() {
         socket.off('user_left')
         socket.off('user_count')
         socket.off('rate_limit_cooldown')
+        socket.off('poll_created')
+        socket.off('poll_updated')
+        socket.off('poll_closed')
+        socket.off('poll_cleared')
       }
     }
   }, [isConnected, socket, userPositions, nextPosition])
@@ -432,7 +495,7 @@ export default function TerminalChat() {
       handleTyping('')
 
       // Add message locally (optimistic UI)
-      setMessages(prev => [...prev, message])
+      addMessage(message)
       
       // Send to server (server won't echo back to us)
       socket.emit('message', message)
@@ -473,6 +536,17 @@ export default function TerminalChat() {
     } catch (error) {
       // Silently ignore typing validation errors to avoid spam
       console.log('Typing content validation failed:', error)
+    }
+  }
+
+  const votePoll = (optionId: number) => {
+    if (!socket || !isConnected || !currentPoll || !currentPoll.active) return
+    
+    try {
+      socket.emit('poll_vote', { optionId })
+      setUserVote(optionId)
+    } catch (error) {
+      console.error('Error voting on poll:', error)
     }
   }
 
@@ -653,6 +727,12 @@ export default function TerminalChat() {
           </div>
         </div>
         <button
+          onClick={() => setShowTerminal(!showTerminal)}
+          className="bg-terminal-amber/90 text-black backdrop-blur-sm rounded-lg border border-terminal-amber p-2 hover:bg-terminal-amber transition-colors text-xs font-mono font-bold"
+        >
+          {showTerminal ? 'CLOSE SHELL' : 'OPEN SHELL'}
+        </button>
+        <button
           onClick={() => router.push('/support')}
           className="bg-terminal-amber/90 text-black backdrop-blur-sm rounded-lg border border-terminal-amber p-2 hover:bg-terminal-amber transition-colors text-xs font-mono font-bold"
         >
@@ -811,6 +891,66 @@ export default function TerminalChat() {
           </div>
         )}
         
+        {/* Poll Component */}
+        {currentPoll && (
+          <div className="mb-4 bg-black/70 backdrop-blur-sm rounded p-4 border border-terminal-amber/50">
+            <div className="text-terminal-amber text-lg mb-2">POLL: {currentPoll.question}</div>
+            <div className="text-terminal-dim text-xs mb-3">
+              Created by {currentPoll.createdBy} • 
+              {currentPoll.active ? (
+                <span className="text-green-400"> Active</span>
+              ) : (
+                <span className="text-red-400"> Closed</span>
+              )}
+              {currentPoll.totalVotes !== undefined && (
+                <span> • {currentPoll.totalVotes} votes</span>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              {currentPoll.options.map((option) => (
+                <div key={option.id} className="relative">
+                  <button
+                    onClick={() => votePoll(option.id)}
+                    disabled={!currentPoll.active}
+                    className={`w-full text-left p-2 rounded border transition-colors ${
+                      userVote === option.id
+                        ? 'border-terminal-amber bg-terminal-amber/20 text-terminal-amber'
+                        : currentPoll.active
+                        ? 'border-terminal-dim hover:border-terminal-bright bg-black/40'
+                        : 'border-terminal-dim/50 bg-black/20 cursor-not-allowed'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">{option.text}</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs">{option.votes}</span>
+                        {option.percentage !== undefined && (
+                          <span className="text-xs text-terminal-dim">({option.percentage}%)</span>
+                        )}
+                      </div>
+                    </div>
+                    {option.percentage !== undefined && (
+                      <div className="mt-1 h-1 bg-terminal-dim/30 rounded overflow-hidden">
+                        <div 
+                          className="h-full bg-terminal-amber transition-all duration-300"
+                          style={{ width: `${option.percentage}%` }}
+                        />
+                      </div>
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+            
+            {currentPoll.winners && currentPoll.winners.length > 0 && (
+              <div className="mt-3 text-terminal-bright text-sm">
+                Winner{currentPoll.winners.length > 1 ? 's' : ''}: {currentPoll.winners.join(', ')}
+              </div>
+            )}
+          </div>
+        )}
+        
         <div 
           ref={chatContainerRef}
           className="flex-1 overflow-y-auto space-y-1 scrollbar-thin bg-black/60 backdrop-blur-sm rounded p-4 border border-terminal-dark/30"
@@ -915,6 +1055,19 @@ export default function TerminalChat() {
           </div>
         </div>
       </div>
+
+      {/* Terminal */}
+      {showTerminal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 backdrop-blur-sm">
+          <div className="w-[600px] max-w-[90vw]">
+            <Terminal 
+              socket={socket} 
+              isVisible={showTerminal} 
+              onClose={() => setShowTerminal(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Floating Media Player */}
       <MediaPlayerFixed socket={socket} username={username} />

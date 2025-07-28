@@ -233,6 +233,173 @@ app.prepare().then(() => {
   const typingStates = new Map()
   const disconnectionTimeouts = new Map() // Grace period for reconnections
   
+  // Message history management
+  const messageHistory = [] // Store recent messages
+  const MAX_MESSAGE_HISTORY = 50 // Keep only last 50 messages
+  
+  // Poll system
+  let currentPoll = null // Store active poll
+  const pollVotes = new Map() // Store votes by user ID
+  const POLL_DURATION = 300000 // 5 minutes
+  
+  // Function to add message to history and manage auto-deletion
+  function addMessageToHistory(message) {
+    messageHistory.push(message)
+    
+    // Keep only the last 50 messages
+    if (messageHistory.length > MAX_MESSAGE_HISTORY) {
+      const deletedMessages = messageHistory.splice(0, messageHistory.length - MAX_MESSAGE_HISTORY)
+      console.log(`Auto-deleted ${deletedMessages.length} old messages (keeping last ${MAX_MESSAGE_HISTORY})`)
+    }
+  }
+  
+  // Function to broadcast message and manage history
+  function broadcastMessage(message, excludeSocket = null) {
+    addMessageToHistory(message)
+    
+    if (excludeSocket) {
+      excludeSocket.broadcast.emit('message', message)
+    } else {
+      io.emit('message', message)
+    }
+  }
+  
+  // Poll management functions
+  function createPoll(question, options, createdBy) {
+    const pollId = Date.now().toString()
+    currentPoll = {
+      id: pollId,
+      question,
+      options: options.map((option, index) => ({ 
+        id: index, 
+        text: option, 
+        votes: 0 
+      })),
+      createdBy,
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + POLL_DURATION),
+      active: true
+    }
+    
+    pollVotes.clear() // Clear previous votes
+    
+    // Broadcast poll creation
+    io.emit('poll_created', currentPoll)
+    
+    // Auto-close poll after duration
+    setTimeout(() => {
+      if (currentPoll && currentPoll.id === pollId) {
+        closePoll()
+      }
+    }, POLL_DURATION)
+    
+    console.log(`Poll created by ${createdBy}: "${question}"`)
+    return currentPoll
+  }
+  
+  function vote(userId, optionId) {
+    if (!currentPoll || !currentPoll.active) {
+      return { success: false, error: 'No active poll' }
+    }
+    
+    if (optionId < 0 || optionId >= currentPoll.options.length) {
+      return { success: false, error: 'Invalid option' }
+    }
+    
+    // Remove previous vote if exists
+    if (pollVotes.has(userId)) {
+      const previousVote = pollVotes.get(userId)
+      currentPoll.options[previousVote].votes--
+    }
+    
+    // Add new vote
+    pollVotes.set(userId, optionId)
+    currentPoll.options[optionId].votes++
+    
+    // Broadcast updated poll
+    io.emit('poll_updated', currentPoll)
+    
+    return { success: true }
+  }
+  
+  function closePoll() {
+    if (!currentPoll) return
+    
+    currentPoll.active = false
+    
+    // Calculate results
+    const totalVotes = Array.from(pollVotes.values()).length
+    const results = currentPoll.options.map(option => ({
+      ...option,
+      percentage: totalVotes > 0 ? Math.round((option.votes / totalVotes) * 100) : 0
+    }))
+    
+    // Find winner(s)
+    const maxVotes = Math.max(...results.map(r => r.votes))
+    const winners = results.filter(r => r.votes === maxVotes)
+    
+    // Broadcast results
+    io.emit('poll_closed', {
+      ...currentPoll,
+      results,
+      totalVotes,
+      winners: winners.map(w => w.text)
+    })
+    
+    console.log(`Poll closed: "${currentPoll.question}" - Total votes: ${totalVotes}`)
+    
+    // Clear poll after 30 seconds
+    setTimeout(() => {
+      currentPoll = null
+      pollVotes.clear()
+      io.emit('poll_cleared')
+    }, 30000)
+  }
+  
+  // Real terminal using child_process
+  const { spawn } = require('child_process')
+  let sharedTerminal = null
+  let terminalListenersSetup = false
+  
+  function createSharedTerminal() {
+    if (sharedTerminal) return sharedTerminal
+    
+    // Spawn a real shell (cmd on Windows, bash on Unix)
+    const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash'
+    const shellArgs = process.platform === 'win32' ? [] : []
+    
+    sharedTerminal = spawn(shell, shellArgs, {
+      cwd: process.cwd(),
+      env: process.env
+    })
+    
+    console.log('Shared terminal created with PID:', sharedTerminal.pid)
+    
+    // Set up output listeners only once
+    if (!terminalListenersSetup) {
+      sharedTerminal.stdout.on('data', (data) => {
+        const output = data.toString()
+        io.emit('terminal_output', { output })
+      })
+      
+      sharedTerminal.stderr.on('data', (data) => {
+        const output = data.toString()
+        io.emit('terminal_output', { output })
+      })
+      
+      terminalListenersSetup = true
+    }
+    
+    // Handle terminal exit
+    sharedTerminal.on('exit', (code) => {
+      console.log('Shared terminal exited with code:', code)
+      sharedTerminal = null
+      terminalListenersSetup = false
+    })
+    
+    return sharedTerminal
+  }
+  
   // Connection health monitoring
   const CONNECTION_HEALTH_CHECK_INTERVAL = 120000 // 2 minutes
   const CONNECTION_TIMEOUT_THRESHOLD = 300000    // 5 minutes of inactivity
@@ -403,9 +570,9 @@ app.prepare().then(() => {
       content: `Now playing: Queued by ${nextSong.queuedBy} | ${mediaQueue.length} songs remaining`,
       timestamp: new Date()
     }
-    io.emit('message', systemMessage)
+    broadcastMessage(systemMessage)
     
-    console.log(`🎵 Auto-playing next in queue: ${nextSong.url} by ${nextSong.queuedBy}`)
+    console.log(`Auto-playing next in queue: ${nextSong.url} by ${nextSong.queuedBy}`)
   }
 
   io.on('connection', (socket) => {
@@ -420,11 +587,11 @@ app.prepare().then(() => {
     const currentTime = Date.now()
     
     // Simple connection tracking (Cloudflare handles bot protection)
-    console.log(`📡 Connection from IP: ${clientIP}`)
+    console.log(`Connection from IP: ${clientIP}`)
     
     // Check if IP is permanently banned
     if (bannedIPs.has(clientIP)) {
-      console.log(`❌ IP ${clientIP} is permanently banned`)
+      console.log(`IP ${clientIP} is permanently banned`)
       socket.emit('message', {
         id: Date.now() + Math.random(),
         username: 'System',
@@ -439,7 +606,7 @@ app.prepare().then(() => {
     const ipCooldown = ipCooldowns.get(clientIP)
     if (ipCooldown && currentTime < ipCooldown.endTime) {
       const remainingTime = Math.ceil((ipCooldown.endTime - currentTime) / 1000)
-      console.log(`❌ IP ${clientIP} blocked due to spam cooldown: ${remainingTime}s remaining`)
+      console.log(` IP ${clientIP} blocked due to spam cooldown: ${remainingTime}s remaining`)
       socket.emit('message', {
         id: Date.now() + Math.random(),
         username: 'System',
@@ -460,7 +627,7 @@ app.prepare().then(() => {
     const recentAttempts = attempts.filter(timestamp => timestamp > windowStart)
     
     if (recentAttempts.length >= CONNECTION_LIMIT) {
-      console.log(`❌ Connection rate limit exceeded for IP: ${clientIP} (${recentAttempts.length}/${CONNECTION_LIMIT} in ${CONNECTION_WINDOW_SECONDS}s)`)
+      console.log(` Connection rate limit exceeded for IP: ${clientIP} (${recentAttempts.length}/${CONNECTION_LIMIT} in ${CONNECTION_WINDOW_SECONDS}s)`)
       socket.emit('message', {
         id: Date.now() + Math.random(),
         username: 'System',
@@ -502,7 +669,7 @@ app.prepare().then(() => {
         
         // Only block extremely obvious system conflicts
         if (cleanUsername.toLowerCase() === 'system') {
-          console.log(`❌ Blocked system username conflict: "${cleanUsername}"`)
+          console.log(` Blocked system username conflict: "${cleanUsername}"`)
           socket.emit('message', {
             id: Date.now() + Math.random(),
             username: 'System',
@@ -525,6 +692,19 @@ app.prepare().then(() => {
         
         console.log(`User joined: ${cleanUsername} (${userColor || 'default'})`)
         
+        // Send recent message history to the new user
+        if (messageHistory.length > 0) {
+          messageHistory.forEach(message => {
+            socket.emit('message', message)
+          })
+          console.log(`Sent ${messageHistory.length} recent messages to ${cleanUsername}`)
+        }
+        
+        // Send current poll if active
+        if (currentPoll && currentPoll.active) {
+          socket.emit('poll_created', currentPoll)
+        }
+        
         // Broadcast join event
         socket.broadcast.emit('user_joined', { 
           username: cleanUsername, 
@@ -537,7 +717,7 @@ app.prepare().then(() => {
         console.log(`User count updated: ${userCount}`)
         
       } catch (error) {
-        console.log(`❌ Username validation failed:`, error.message)
+        console.log(` Username validation failed:`, error.message)
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
@@ -608,6 +788,82 @@ app.prepare().then(() => {
         return // Block the message completely
       }
       
+      // Check for poll command
+      if (message && message.content && typeof message.content === 'string') {
+        const messageContent = message.content.trim()
+        
+        // Handle /poll command
+        if (messageContent.startsWith('/poll')) {
+          // Check if it's just '/poll' without space (show help)
+          if (messageContent.trim() === '/poll') {
+            console.log(`Sending poll help message to user: ${username}`)
+            const helpMessage = {
+              id: Date.now() + Math.random(),
+              username: 'System',
+              content: 'Poll format: /poll Question? | Option 1 | Option 2 | Option 3...\nExample: /poll What is your favorite color? | Red | Blue | Green',
+              timestamp: new Date()
+            }
+            socket.emit('message', helpMessage)
+            console.log('Poll help message sent:', helpMessage)
+            return
+          }
+          
+          // Handle '/poll ' with content (create poll)
+          if (messageContent.startsWith('/poll ')) {
+            const pollContent = messageContent.substring(6).trim()
+            
+            // Parse poll format: question | option1 | option2 | option3 ...
+            const parts = pollContent.split('|').map(part => part.trim())
+            
+            if (parts.length < 3) {
+              socket.emit('message', {
+                id: Date.now() + Math.random(),
+                username: 'System',
+                content: 'Poll format: /poll Question? | Option 1 | Option 2 | Option 3...\nExample: /poll What is your favorite color? | Red | Blue | Green',
+                timestamp: new Date()
+              })
+              return
+            }
+            
+            const question = parts[0]
+            const options = parts.slice(1)
+            
+            if (options.length > 6) {
+              socket.emit('message', {
+                id: Date.now() + Math.random(),
+                username: 'System',
+                content: 'Maximum 6 poll options allowed',
+                timestamp: new Date()
+              })
+              return
+            }
+            
+            if (currentPoll && currentPoll.active) {
+              socket.emit('message', {
+                id: Date.now() + Math.random(),
+                username: 'System',
+                content: 'A poll is already active. Please wait for it to finish.',
+                timestamp: new Date()
+              })
+              return
+            }
+            
+            // Create the poll
+            createPoll(question, options, username)
+            return // Don't process as regular message
+          }
+          
+          // If it's '/poll' followed by something else but not a space, show help
+          socket.emit('message', {
+            id: Date.now() + Math.random(),
+            username: 'System',
+            content: 'Poll format: /poll Question? | Option 1 | Option 2 | Option 3...\nExample: /poll What is your favorite color? | Red | Blue | Green',
+            timestamp: new Date()
+          })
+          return
+        }
+      }
+      
       // Enhanced spam detection - check before rate limiting
       if (message && message.content && typeof message.content === 'string') {
         const messageContent = message.content.trim()
@@ -652,7 +908,7 @@ app.prepare().then(() => {
         const ipCharLimit = ipSpamData.totalChars + messageLength > MAX_CHARS_PER_WINDOW
         
         if (userCharLimit || ipCharLimit) {
-          console.log(`❌ Character spam detected from ${username} (IP: ${userIP}): user=${spamMetrics.totalChars + messageLength}/${MAX_CHARS_PER_WINDOW}, ip=${ipSpamData.totalChars + messageLength}/${MAX_CHARS_PER_WINDOW}`)
+          console.log(` Character spam detected from ${username} (IP: ${userIP}): user=${spamMetrics.totalChars + messageLength}/${MAX_CHARS_PER_WINDOW}, ip=${ipSpamData.totalChars + messageLength}/${MAX_CHARS_PER_WINDOW}`)
           
           const cooldownDuration = 300 * 1000 // 5 minute cooldown for character spam
           
@@ -676,7 +932,7 @@ app.prepare().then(() => {
           socket.emit('message', {
             id: Date.now() + Math.random(),
             username: 'System',
-            content: `⚠ SPAM FILTER TRIGGERED - Excessive character transmission detected. IP blocked.`,
+            content: `WARNING SPAM FILTER TRIGGERED - Excessive character transmission detected. IP blocked.`,
             timestamp: new Date()
           })
           
@@ -693,7 +949,7 @@ app.prepare().then(() => {
         ).length
         
         if (userRepeatedContent >= REPEATED_CONTENT_THRESHOLD || ipRepeatedContent >= REPEATED_CONTENT_THRESHOLD) {
-          console.log(`❌ Repeated content spam detected from ${username} (IP: ${userIP}): "${messageContent.substring(0, 50)}..." user=${userRepeatedContent}, ip=${ipRepeatedContent}`)
+          console.log(` Repeated content spam detected from ${username} (IP: ${userIP}): "${messageContent.substring(0, 50)}..." user=${userRepeatedContent}, ip=${ipRepeatedContent}`)
           
           const cooldownDuration = 600 * 1000 // 10 minute cooldown for repeated content spam
           
@@ -717,7 +973,7 @@ app.prepare().then(() => {
           socket.emit('message', {
             id: Date.now() + Math.random(),
             username: 'System',
-            content: `⚠ SPAM FILTER TRIGGERED - Repeated transmission pattern detected. IP blocked.`,
+            content: `WARNING SPAM FILTER TRIGGERED - Repeated transmission pattern detected. IP blocked.`,
             timestamp: new Date()
           })
           
@@ -749,7 +1005,7 @@ app.prepare().then(() => {
           messageCount: violationCount
         })
         
-        console.log(`❌ Rate limit violation ${violationCount} for ${username}, cooldown: ${cooldownDuration/1000}s`)
+        console.log(` Rate limit violation ${violationCount} for ${username}, cooldown: ${cooldownDuration/1000}s`)
         
         socket.emit('rate_limit_cooldown', {
           message: `Rate limit exceeded! You are now in cooldown for ${cooldownDuration/1000} seconds.`,
@@ -761,7 +1017,7 @@ app.prepare().then(() => {
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
-          content: `☣ TRANSMISSION OVERFLOW - Network lockdown active for ${cooldownDuration/1000}s`,
+          content: `TOXIC TRANSMISSION OVERFLOW - Network lockdown active for ${cooldownDuration/1000}s`,
           timestamp: new Date()
         })
         
@@ -775,7 +1031,7 @@ app.prepare().then(() => {
           !message.id ||
           !message.username ||
           !message.timestamp) {
-        console.log(`❌ Invalid message structure from ${username}`)
+        console.log(` Invalid message structure from ${username}`)
         return
       }
       
@@ -807,10 +1063,10 @@ app.prepare().then(() => {
         })
         
         // Broadcast to other users (sender already has it via optimistic UI)
-        socket.broadcast.emit('message', cleanMessage)
+        broadcastMessage(cleanMessage, socket)
         
       } catch (error) {
-        console.log(`❌ Message validation failed from ${username}:`, error.message)
+        console.log(` Message validation failed from ${username}:`, error.message)
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
@@ -870,7 +1126,7 @@ app.prepare().then(() => {
       
       // Check if exceeding typing rate limit (only apply severe penalties for extreme spam)
       if (typingData.events.length > TYPING_RATE_LIMIT * 3) { // 450+ events in 10s = obvious bot behavior
-        console.log(`❌ Extreme typing spam detected from IP ${userIP}: ${typingData.events.length} events`)
+        console.log(` Extreme typing spam detected from IP ${userIP}: ${typingData.events.length} events`)
         
         const cooldownDuration = 120 * 1000 // 2 minute cooldown
         userCooldowns.set(socket.id, {
@@ -892,22 +1148,22 @@ app.prepare().then(() => {
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
-          content: `⚠ TYPING SPAM FILTER TRIGGERED - Extreme bot behavior detected`,
+          content: `WARNING TYPING SPAM FILTER TRIGGERED - Extreme bot behavior detected`,
           timestamp: new Date()
         })
         
-        console.log(`❌ Typing spam cooldown applied to IP ${userIP}`)
+        console.log(` Typing spam cooldown applied to IP ${userIP}`)
         return
       }
       
       // Warn for high typing frequency but still allow it (much more lenient)
       if (typingData.events.length > TYPING_RATE_LIMIT * 1.5 && currentTime - typingData.lastWarning > 300000) {
-        console.log(`⚠ Very high typing frequency from IP ${userIP}: ${typingData.events.length}/${TYPING_RATE_LIMIT * 1.5} events`)
+        console.log(`WARNING Very high typing frequency from IP ${userIP}: ${typingData.events.length}/${TYPING_RATE_LIMIT * 1.5} events`)
         
         socket.emit('message', {
           id: Date.now() + Math.random(),
           username: 'System',
-          content: `⚠ Extremely high typing frequency detected. If you're human, this is just a notice.`,
+          content: `WARNING Extremely high typing frequency detected. If you're human, this is just a notice.`,
           timestamp: new Date()
         })
         
@@ -1001,7 +1257,7 @@ app.prepare().then(() => {
         
         // Progressive penalties based on bot score
         if (botData.botScore >= BOT_SCORE_THRESHOLD) {
-          console.log(`🚫 Advanced bot detected from IP ${userIP}, total score: ${botData.botScore}`)
+          console.log(`BLOCKED Advanced bot detected from IP ${userIP}, total score: ${botData.botScore}`)
           
           // First offense: Temporary ban
           if (botData.warnings === 0) {
@@ -1031,17 +1287,17 @@ app.prepare().then(() => {
           } else {
             // Repeat offense: Permanent IP ban
             bannedIPs.add(userIP)
-            console.log(`🚫 Permanent ban applied to repeat bot offender IP: ${userIP}`)
+            console.log(`BLOCKED Permanent ban applied to repeat bot offender IP: ${userIP}`)
             
             socket.emit('message', {
               id: Date.now() + Math.random(),
               username: 'System',
-              content: `⛔ Connection terminated - Advanced bot behavior detected`,
+              content: `TERMINATED Connection terminated - Advanced bot behavior detected`,
               timestamp: new Date()
             })
             
             // Send admin notification
-            const adminMsg = `🚫 PERMANENT BAN: IP ${userIP} banned for repeated advanced bot behavior. Score: ${botData.botScore}, User: ${username}`
+            const adminMsg = `BLOCKED PERMANENT BAN: IP ${userIP} banned for repeated advanced bot behavior. Score: ${botData.botScore}, User: ${username}`
             sendAdminMessage(adminMsg)
             
             socket.disconnect(true)
@@ -1053,12 +1309,12 @@ app.prepare().then(() => {
             socket.emit('message', {
               id: Date.now() + Math.random(),
               username: 'System',
-              content: `⚠ Automated behavior patterns detected over extended period.`,
+              content: `WARNING Automated behavior patterns detected over extended period.`,
               timestamp: new Date()
             })
             
             botData.lastBotCheck = currentTime
-            console.log(`⚠ Bot warning sent to IP ${userIP}, score: ${botData.botScore}/${BOT_SCORE_THRESHOLD}`)
+            console.log(`WARNING Bot warning sent to IP ${userIP}, score: ${botData.botScore}/${BOT_SCORE_THRESHOLD}`)
           }
         }
         
@@ -1122,7 +1378,7 @@ app.prepare().then(() => {
       
       if (!user) return
 
-      console.log(`🎵 Media play request from ${username}: ${url}`)
+      console.log(` Media play request from ${username}: ${url}`)
       
       // Check if user is on cooldown
       const lastQueueTime = queueCooldowns.get(username)
@@ -1140,7 +1396,7 @@ app.prepare().then(() => {
             content: `Queue cooldown active. Wait ${Math.ceil(remainingCooldown)} more seconds before initiating another broadcast.`,
             timestamp: new Date()
           })
-          console.log(`❌ ${username} blocked by cooldown: ${Math.ceil(remainingCooldown)}s remaining`)
+          console.log(` ${username} blocked by cooldown: ${Math.ceil(remainingCooldown)}s remaining`)
           return // This should prevent further execution
         }
       }
@@ -1164,7 +1420,7 @@ app.prepare().then(() => {
         
         // Reset skip votes for new video
         skipVotes.clear()
-        console.log(`🗳️ Skip votes cleared for new video, required votes: ${Math.ceil(connectedUsers.size / 2)}`)
+        console.log(` Skip votes cleared for new video, required votes: ${Math.ceil(connectedUsers.size / 2)}`)
         currentVideoUrl = url
         
         // Broadcast to all clients
@@ -1183,7 +1439,7 @@ app.prepare().then(() => {
           content: `${username} has initiated media broadcast on all channels`,
           timestamp: new Date()
         }
-        io.emit('message', systemMessage)
+        broadcastMessage(systemMessage)
         
       } else {
         // Add to queue if a video is already playing
@@ -1203,9 +1459,9 @@ app.prepare().then(() => {
           content: `${username} has queued media for broadcast (Position ${mediaQueue.length} in queue)`,
           timestamp: new Date()
         }
-        io.emit('message', queueMessage)
+        broadcastMessage(queueMessage)
         
-        console.log(`🎵 ${username} queued: ${url} (Position ${mediaQueue.length})`)
+        console.log(` ${username} queued: ${url} (Position ${mediaQueue.length})`)
       }
       
       // Broadcast updated queue state
@@ -1266,9 +1522,9 @@ app.prepare().then(() => {
         content: `${username} has terminated current broadcast`,
         timestamp: new Date()
       }
-      io.emit('message', systemMessage)
+      broadcastMessage(systemMessage)
       
-      console.log(`🛑 MANUAL STOP TRIGGER - Media stopped manually by ${username}`)
+      console.log(` MANUAL STOP TRIGGER - Media stopped manually by ${username}`)
       
       // Play next song in queue
       playNextInQueue()
@@ -1303,7 +1559,7 @@ app.prepare().then(() => {
         content: `${username} has filed skip request (${currentVotes}/${requiredVotes})`,
         timestamp: new Date()
       }
-      io.emit('message', systemMessage)
+      broadcastMessage(systemMessage)
       
       // Check if we have enough votes to skip
       if (currentVotes >= requiredVotes) {
@@ -1314,9 +1570,9 @@ app.prepare().then(() => {
           content: `Current broadcast terminated by collective decision`,
           timestamp: new Date()
         }
-        io.emit('message', skipMessage)
+        broadcastMessage(skipMessage)
         
-        console.log(`🗳️ VOTE SKIP TRIGGER - Video skipped by vote: ${currentVotes}/${requiredVotes}`)
+        console.log(` VOTE SKIP TRIGGER - Video skipped by vote: ${currentVotes}/${requiredVotes}`)
         
         // Play next song in queue
         playNextInQueue()
@@ -1329,7 +1585,7 @@ app.prepare().then(() => {
       const user = connectedUsers.get(socket.id)
       const currentTime = Date.now()
       
-      console.log('🎵 MEDIA_ENDED received with client timing data:', {
+      console.log(' MEDIA_ENDED received with client timing data:', {
         username,
         videoId,
         clientCurrentTime,
@@ -1373,12 +1629,12 @@ app.prepare().then(() => {
       if (mediaPlayerState.startTime) {
         const playDuration = currentTime - mediaPlayerState.startTime
         if (playDuration < ABSOLUTE_MIN_VIDEO_DURATION) {
-          console.log(`🚫 ABSOLUTE BLOCK - Media ended event REJECTED - video too young (${Math.floor(playDuration/1000)}s, minimum ${ABSOLUTE_MIN_VIDEO_DURATION/1000}s) reported by ${username}`)
+          console.log(`BLOCKED ABSOLUTE BLOCK - Media ended event REJECTED - video too young (${Math.floor(playDuration/1000)}s, minimum ${ABSOLUTE_MIN_VIDEO_DURATION/1000}s) reported by ${username}`)
           return
         }
         console.log(`✅ Absolute duration check passed: ${Math.floor(playDuration/1000)}s (minimum ${ABSOLUTE_MIN_VIDEO_DURATION/1000}s)`)
       } else {
-        console.log(`🚫 ABSOLUTE BLOCK - Media ended event REJECTED - no start time available for validation`)
+        console.log(`BLOCKED ABSOLUTE BLOCK - Media ended event REJECTED - no start time available for validation`)
         return
       }
       
@@ -1396,7 +1652,7 @@ app.prepare().then(() => {
       recentEvents.push(currentTime)
       userEndEventLimiter.set(userIP, recentEvents)
       
-      console.log(`🎵 Video ended naturally (validated - reported by ${username}), playing next in queue`)
+      console.log(` Video ended naturally (validated - reported by ${username}), playing next in queue`)
       
       // Play next song in queue
       playNextInQueue()
@@ -1468,6 +1724,24 @@ app.prepare().then(() => {
         timestamp: new Date()
       })
     }
+
+    // Poll voting
+    socket.on('poll_vote', (data) => {
+      const user = connectedUsers.get(socket.id)
+      if (!user) return
+      
+      const { optionId } = data
+      const result = vote(socket.id, optionId)
+      
+      if (!result.success) {
+        socket.emit('message', {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          content: result.error,
+          timestamp: new Date()
+        })
+      }
+    })
 
     // Admin commands for IP management
     socket.on('admin_command', (data) => {
@@ -1547,6 +1821,29 @@ app.prepare().then(() => {
       } else {
         sendAdminMessage('Invalid admin command. Available: ban_ip, unban_ip, list_bans, list_users, get_user_ip')
       }
+    })
+
+    // Terminal command handler
+    socket.on('terminal_command', (data) => {
+      const user = connectedUsers.get(socket.id)
+      if (!user) return
+
+      const { command } = data
+      const username = user.username
+      
+      console.log(`Terminal command from ${username}: "${command}"`)
+
+      // Get or create shared terminal
+      const terminal = createSharedTerminal()
+      
+      // Broadcast command to all users
+      io.emit('terminal_output', { 
+        output: `[${username}] $ ${command}`, 
+        fromUser: username 
+      })
+      
+      // Send command to real terminal
+      terminal.stdin.write(command + '\n')
     })
 
     socket.on('disconnect', () => {
@@ -1712,7 +2009,7 @@ app.prepare().then(() => {
         timestamp: new Date(),
         userColor: 'toxic'
       }
-      io.emit('message', systemMsg)
+      broadcastMessage(systemMsg)
     }
   }, 600000) // 10 minutes
 
@@ -1728,7 +2025,7 @@ app.prepare().then(() => {
         timestamp: new Date(),
         userColor: 'ember'
       }
-      io.emit('message', npcMsg)
+      broadcastMessage(npcMsg)
     }
   }, 900000) // 15 minutes
 
@@ -1763,7 +2060,7 @@ app.prepare().then(() => {
         content: '', 
         userColor: typingData.userColor 
       })
-      console.log(`🧹 Cleared expired typing state for ${typingData.username}`)
+      console.log(`CLEANUP Cleared expired typing state for ${typingData.username}`)
     })
   }, TYPING_CLEANUP_INTERVAL)
 
@@ -1994,6 +2291,10 @@ app.prepare().then(() => {
 
   httpServer.listen(port, () => {
     console.log(`> Ready on port ${port}`)
+    
+    // Initialize shared terminal
+    createSharedTerminal()
+    console.log('✓ Shared terminal initialized')
     
     if (process.env.RAILWAY_ENVIRONMENT) {
       console.log('🚂 Railway deployment detected')
