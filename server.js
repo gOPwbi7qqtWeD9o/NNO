@@ -408,19 +408,22 @@ app.prepare().then(() => {
   function createSharedTerminal() {
     if (useSimulation) {
       // Return a simple simulation object for development
-      console.log('Creating simulated terminal for development')
-      return {
-        write: (data) => {
-          const command = data.replace('\r', '').trim()
-          if (command) {
-            setTimeout(() => {
-              const output = simulateTerminalCommand(command)
-              io.emit('terminal_output', { output, showPrompt: true })
-            }, 100)
-          }
-        },
-        pid: 'simulation'
+      if (!sharedTerminal) {
+        console.log('Creating simulated terminal for development')
+        sharedTerminal = {
+          write: (data) => {
+            const command = data.replace('\r', '').trim()
+            if (command) {
+              setTimeout(() => {
+                const output = simulateTerminalCommand(command)
+                io.emit('terminal_output', { output, showPrompt: true })
+              }, 100)
+            }
+          },
+          pid: 'simulation'
+        }
       }
+      return sharedTerminal
     }
     
     if (!pty) {
