@@ -170,6 +170,26 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       setCurrentlyPlaying(queueData.currentlyPlaying)
     })
 
+    // Listen for queue progression (next video auto-play)
+    socket.on('queue_next', (data) => {
+      console.log('🎵 Auto-playing next video from queue:', data)
+      setVideoId(data.videoId)
+      setUrl(data.url)
+      setVideoOwner(data.queuedBy || '')
+      setHasError(false)
+      setHasVoted(false)
+      setIsUserSeeking(false)
+      setLastKnownTime(0)
+      setEndEventCooldown(false)
+      setVideoDuration(0)
+      setPlayerStateHistory([])
+      lastEndEventTime.current = 0
+      
+      // Reset sync info for new video
+      setSyncInfo(null)
+      setShouldSync(false)
+    })
+
     // Listen for system messages to detect cooldown errors
     socket.on('message', (message) => {
       if (message.username === 'System' && message.content.includes('Queue cooldown active')) {
@@ -199,6 +219,7 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ socket, username, onVolumeCha
       socket.off('media_stop')
       socket.off('skip_votes_update')
       socket.off('queue_update')
+      socket.off('queue_next')
       socket.off('message')
     }
   }, [socket, username])
