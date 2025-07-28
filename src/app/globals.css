@@ -78,6 +78,15 @@ a {
   scrollbar-color: #665544 transparent;
 }
 
+.scrollbar-hide {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* WebKit */
+}
+
 /* Custom slider styling - more specific to override Tailwind */
 input[type="range"].slider-rust {
   -webkit-appearance: none !important;

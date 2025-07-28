@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import io, { Socket } from 'socket.io-client'
 import Oscilloscope from './components/Oscilloscope'
 import MediaPlayerFixed from './components/MediaPlayerFixed'
-import Terminal from './components/Terminal'
 import { sanitizeMessage, sanitizeUsername } from './utils/security'
 
 interface Message {
@@ -85,7 +84,6 @@ export default function TerminalChat() {
   const [username, setUsername] = useState('')
   const [userColor, setUserColor] = useState('steel')
   const [isConnected, setIsConnected] = useState(false)
-  const [showTerminal, setShowTerminal] = useState(false)
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([])
   const [userCount, setUserCount] = useState<number>(0)
   const [userPositions, setUserPositions] = useState<Map<string, number>>(new Map())
@@ -362,6 +360,10 @@ export default function TerminalChat() {
     try {
       // Sanitize username before connecting
       const sanitizedUsername = sanitizeUsername(username.trim(), isAdmin)
+      
+      // Store username and userColor in localStorage for terminal page
+      localStorage.setItem('neuralnode_username', sanitizedUsername)
+      localStorage.setItem('neuralnode_color', userColor)
       
       const newSocket = io({
         // Optimized for Cloudflare compatibility and stability
@@ -727,10 +729,16 @@ export default function TerminalChat() {
           </div>
         </div>
         <button
-          onClick={() => setShowTerminal(!showTerminal)}
+          onClick={() => setShowCryptPopup(true)}
+          className="bg-terminal-rust/90 text-terminal-bright backdrop-blur-sm rounded-lg border border-terminal-rust p-2 hover:bg-terminal-rust transition-colors text-xs font-mono font-bold"
+        >
+          ENTER THE CRYPT
+        </button>
+        <button
+          onClick={() => router.push('/terminal')}
           className="bg-terminal-amber/90 text-black backdrop-blur-sm rounded-lg border border-terminal-amber p-2 hover:bg-terminal-amber transition-colors text-xs font-mono font-bold"
         >
-          {showTerminal ? 'CLOSE SHELL' : 'OPEN SHELL'}
+          OPEN SHELL
         </button>
         <button
           onClick={() => router.push('/support')}
@@ -956,7 +964,7 @@ export default function TerminalChat() {
         
         <div 
           ref={chatContainerRef}
-          className="flex-1 overflow-y-auto space-y-1 scrollbar-thin bg-black/60 backdrop-blur-sm rounded p-4 border border-terminal-dark/30"
+          className="flex-1 overflow-y-auto scrollbar-hide space-y-1 bg-black/60 backdrop-blur-sm rounded p-4 border border-terminal-dark/30"
         >
           {messages.map((message) => (
             <div key={message.id} className="animate-fade-in">
@@ -1059,50 +1067,41 @@ export default function TerminalChat() {
         </div>
       </div>
 
-      {/* Terminal */}
-      {showTerminal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 backdrop-blur-sm">
-          <div className="w-[600px] max-w-[90vw]">
-            <Terminal 
-              socket={socket} 
-              isVisible={showTerminal} 
-              onClose={() => setShowTerminal(false)}
-              username={username}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Floating Media Player */}
       <MediaPlayerFixed socket={socket} username={username} />
 
       {/* Crypt Door Popup */}
       {showCryptPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
-          <div className="bg-terminal-bg border-2 border-terminal-amber p-8 max-w-lg text-center terminal-text">
-            <div className="text-terminal-text font-mono mb-8 text-center whitespace-pre-line">
-              {`Before you stands a weathered concrete tomb.
-
-The air thickens and the stench of rot chokes you.
-
-Will you slide open its ancient doors?`}
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
+          <div className="bg-black/90 border-2 border-terminal-rust p-8 max-w-2xl text-center backdrop-blur-sm">
+            <div className="text-terminal-rust font-mono mb-2 text-lg animate-pulse">
+              ⚠ NEURAL PATHWAY BIFURCATION DETECTED ⚠
             </div>
-            <div className="flex justify-center gap-4">
+            <div className="text-terminal-text font-mono mb-8 text-center whitespace-pre-line leading-relaxed">
+{`SUBSTRATE BREACH IMMINENT :: CONSCIOUSNESS FRAGMENTATION PROTOCOL ACTIVE
+
+The hyperstitional machinery beyond this threshold operates on 
+frequencies that fragment baseline human cognition.
+
+Your wetware may experience irreversible transformation.`}
+            </div>
+            <div className="flex justify-center gap-6">
               <button
                 onClick={() => {
                   setShowCryptPopup(false)
                   // Navigate to the crypt entrance terminal
                   router.push('/crypt')
                 }}
-                className="bg-terminal-amber text-black px-6 py-2 font-mono hover:bg-yellow-400 transition-colors"
+                className="bg-terminal-rust/80 text-terminal-bright px-8 py-3 font-mono hover:bg-terminal-rust transition-colors border border-terminal-rust animate-pulse"
               >
-                YES
+INITIATE MERGE
               </button>
               <button
                 onClick={() => setShowCryptPopup(false)}
-                className="bg-gray-600 text-white px-6 py-2 font-mono hover:bg-gray-500 transition-colors"
+                className="bg-black/60 text-terminal-dim px-8 py-3 font-mono hover:bg-black/80 transition-colors border border-terminal-dim"
               >
-                NO
+                ABORT :: REMAIN HUMAN
               </button>
             </div>
           </div>

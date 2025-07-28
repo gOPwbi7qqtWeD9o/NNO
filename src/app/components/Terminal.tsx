@@ -27,10 +27,10 @@ export default function TerminalComponent({ socket, isVisible, onClose, username
         foreground: '#00ff41',
         cursor: '#00ff41',
       },
-      fontSize: 14,
+      fontSize: 16,
       fontFamily: '"Courier New", Courier, monospace',
-      rows: 24,
-      cols: 80,
+      rows: 30,
+      cols: 120,
     })
 
     xtermRef.current = term
@@ -160,8 +160,8 @@ export default function TerminalComponent({ socket, isVisible, onClose, username
       </div>
       <div 
         ref={terminalRef} 
-        className="p-2"
-        style={{ height: '400px' }}
+        className="p-4"
+        style={{ height: '100%', width: '100%' }}
       />
     </div>
   )
