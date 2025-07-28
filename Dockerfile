@@ -1,14 +1,18 @@
 # Use Node.js 18 Alpine image for smaller size
 FROM node:18-alpine
 
-# Install build dependencies for node-pty and build tools
+# Install build dependencies for node-pty and essential shell tools
 RUN apk add --no-cache \
     python3 \
     make \
     g++ \
     linux-headers \
     git \
-    libc6-compat
+    libc6-compat \
+    bash \
+    coreutils \
+    util-linux \
+    procps
 
 # Set working directory
 WORKDIR /app

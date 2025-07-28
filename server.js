@@ -356,30 +356,14 @@ app.prepare().then(() => {
     }, 30000)
   }
   
-  // Real terminal using node-pty with fallback simulation
+  // Real terminal using node-pty
   let pty
-  let useSimulation = false
-  
   try {
     pty = require('node-pty')
     console.log('node-pty loaded successfully')
-    
-    // Test if we can actually spawn a terminal
-    const testShell = process.platform === 'win32' ? 'powershell.exe' : 'bash'
-    const testTerminal = pty.spawn(testShell, [], {
-      name: 'xterm-color',
-      cols: 80,
-      rows: 24,
-      cwd: process.cwd(),
-      env: process.env
-    })
-    testTerminal.kill()
-    console.log('node-pty terminal spawn test successful')
   } catch (error) {
-    console.log('node-pty not functional, using terminal simulation for development')
-    console.log('Error:', error.message)
+    console.log('node-pty not available:', error.message)
     pty = null
-    useSimulation = true
   }
   
   let sharedTerminal = null
@@ -406,26 +390,6 @@ app.prepare().then(() => {
   }
 
   function createSharedTerminal() {
-    if (useSimulation) {
-      // Return a simple simulation object for development
-      if (!sharedTerminal) {
-        console.log('Creating simulated terminal for development')
-        sharedTerminal = {
-          write: (data) => {
-            const command = data.replace('\r', '').trim()
-            if (command) {
-              setTimeout(() => {
-                const output = simulateTerminalCommand(command)
-                io.emit('terminal_output', { output, showPrompt: true })
-              }, 100)
-            }
-          },
-          pid: 'simulation'
-        }
-      }
-      return sharedTerminal
-    }
-    
     if (!pty) {
       console.log('Terminal not available - node-pty not installed')
       return null
@@ -433,16 +397,35 @@ app.prepare().then(() => {
     
     if (sharedTerminal) return sharedTerminal
     
-    // Spawn a real PTY (pseudo terminal)
-    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash'
+    // Spawn a real PTY (pseudo terminal) - use sh as fallback for Alpine Linux
+    let shell
+    if (process.platform === 'win32') {
+      shell = 'powershell.exe'
+    } else {
+      // Try bash first, fallback to sh (which should always exist)
+      shell = process.env.SHELL || '/bin/bash'
+      // Check if bash exists, fallback to sh
+      const fs = require('fs')
+      if (!fs.existsSync('/bin/bash')) {
+        shell = '/bin/sh'
+      }
+    }
     
     try {
+      console.log(`Attempting to spawn shell: ${shell}`)
+      console.log(`Platform: ${process.platform}`)
+      console.log(`Working directory: ${process.cwd()}`)
+      
       sharedTerminal = pty.spawn(shell, [], {
         name: 'xterm-color',
         cols: 80,
         rows: 24,
         cwd: process.cwd(),
-        env: process.env
+        env: {
+          ...process.env,
+          TERM: 'xterm-color',
+          PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin'
+        }
       })
       
       console.log('Shared terminal created with PID:', sharedTerminal.pid)
@@ -450,6 +433,7 @@ app.prepare().then(() => {
       // Set up output listeners only once
       if (!terminalListenersSetup) {
         sharedTerminal.onData((data) => {
+          console.log('Terminal output:', JSON.stringify(data))
           io.emit('terminal_output', { output: data })
         })
         
