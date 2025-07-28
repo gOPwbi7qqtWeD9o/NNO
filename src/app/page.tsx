@@ -893,7 +893,7 @@ export default function TerminalChat() {
         
         {/* Poll Component */}
         {currentPoll && (
-          <div className="mb-4 bg-black/70 backdrop-blur-sm rounded p-4 border border-terminal-amber/50">
+          <div className="mb-4 mr-40 bg-black/70 backdrop-blur-sm rounded p-4 border border-terminal-amber/50">
             <div className="text-terminal-amber text-lg mb-2">POLL: {currentPoll.question}</div>
             <div className="text-terminal-dim text-xs mb-3">
               Created by {currentPoll.createdBy} • 
@@ -908,7 +908,7 @@ export default function TerminalChat() {
             </div>
             
             <div className="space-y-2">
-              {currentPoll.options.map((option) => (
+              {currentPoll.options.map((option, index) => (
                 <div key={option.id} className="relative">
                   <button
                     onClick={() => votePoll(option.id)}
@@ -921,8 +921,11 @@ export default function TerminalChat() {
                         : 'border-terminal-dim/50 bg-black/20 cursor-not-allowed'
                     }`}
                   >
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm">{option.text}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-terminal-amber font-bold text-sm min-w-[20px]">
+                        {index + 1}.
+                      </span>
+                      <span className="text-sm flex-1">{option.text}</span>
                       <div className="flex items-center space-x-2">
                         <span className="text-xs">{option.votes}</span>
                         {option.percentage !== undefined && (
@@ -931,7 +934,7 @@ export default function TerminalChat() {
                       </div>
                     </div>
                     {option.percentage !== undefined && (
-                      <div className="mt-1 h-1 bg-terminal-dim/30 rounded overflow-hidden">
+                      <div className="mt-1 ml-8 h-1 bg-terminal-dim/30 rounded overflow-hidden">
                         <div 
                           className="h-full bg-terminal-amber transition-all duration-300"
                           style={{ width: `${option.percentage}%` }}
@@ -1064,6 +1067,7 @@ export default function TerminalChat() {
               socket={socket} 
               isVisible={showTerminal} 
               onClose={() => setShowTerminal(false)}
+              username={username}
             />
           </div>
         </div>

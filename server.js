@@ -356,19 +356,73 @@ app.prepare().then(() => {
     }, 30000)
   }
   
-  // Real terminal using node-pty
+  // Real terminal using node-pty with fallback simulation
   let pty
+  let useSimulation = false
+  
   try {
     pty = require('node-pty')
+    console.log('node-pty loaded successfully')
+    
+    // Test if we can actually spawn a terminal
+    const testShell = process.platform === 'win32' ? 'powershell.exe' : 'bash'
+    const testTerminal = pty.spawn(testShell, [], {
+      name: 'xterm-color',
+      cols: 80,
+      rows: 24,
+      cwd: process.cwd(),
+      env: process.env
+    })
+    testTerminal.kill()
+    console.log('node-pty terminal spawn test successful')
   } catch (error) {
-    console.log('node-pty not available, terminal functionality disabled')
+    console.log('node-pty not functional, using terminal simulation for development')
+    console.log('Error:', error.message)
     pty = null
+    useSimulation = true
   }
   
   let sharedTerminal = null
   let terminalListenersSetup = false
   
+  // Simple terminal simulation for development
+  function simulateTerminalCommand(command) {
+    const responses = {
+      'help': 'Available commands: help, ls, pwd, date, whoami, echo, clear\r\n',
+      'ls': 'server.js  package.json  src/  node_modules/  README.md\r\n',
+      'pwd': process.cwd() + '\r\n',
+      'date': new Date().toString() + '\r\n',
+      'whoami': 'simulation-user\r\n',
+      'clear': '\x1b[2J\x1b[H', // Clear screen
+      'node --version': process.version + '\r\n',
+      'npm --version': '10.7.0\r\n'
+    }
+    
+    if (command.startsWith('echo ')) {
+      return command.substring(5) + '\r\n'
+    }
+    
+    return responses[command] || `Command not found: ${command}\r\nType 'help' for available commands.\r\n`
+  }
+
   function createSharedTerminal() {
+    if (useSimulation) {
+      // Return a simple simulation object for development
+      console.log('Creating simulated terminal for development')
+      return {
+        write: (data) => {
+          const command = data.replace('\r', '').trim()
+          if (command) {
+            setTimeout(() => {
+              const output = simulateTerminalCommand(command)
+              io.emit('terminal_output', { output, showPrompt: true })
+            }, 100)
+          }
+        },
+        pid: 'simulation'
+      }
+    }
+    
     if (!pty) {
       console.log('Terminal not available - node-pty not installed')
       return null
@@ -1837,15 +1891,12 @@ app.prepare().then(() => {
       }
     })
 
-    // Terminal command handler
-    socket.on('terminal_command', (data) => {
+    // Terminal connection request handler
+    socket.on('terminal_connect', () => {
       const user = connectedUsers.get(socket.id)
       if (!user) return
 
-      const { command } = data
-      const username = user.username
-      
-      console.log(`Terminal command from ${username}: "${command}"`)
+      console.log(`Terminal connection request from ${user.username}`)
 
       // Get or create shared terminal
       const terminal = createSharedTerminal()
@@ -1857,8 +1908,36 @@ app.prepare().then(() => {
         return
       }
       
-      // Broadcast command to all users
-      io.emit('terminal_output', { 
+      // Send ready message to this specific client
+      socket.emit('terminal_ready', { 
+        message: 'Connected to shared terminal session',
+        shell: process.platform === 'win32' ? 'PowerShell' : 'Bash'
+      })
+    })
+
+    // Terminal command handler
+    socket.on('terminal_command', (data) => {
+      const user = connectedUsers.get(socket.id)
+      if (!user) return
+
+      const { command, username: clientUsername } = data
+      const username = user.username
+      
+      console.log(`Terminal command from ${username}: "${command}"`)
+
+      // Get or create shared terminal
+      const terminal = createSharedTerminal()
+      
+      if (!terminal) {
+        socket.emit('terminal_output', { 
+          output: 'Terminal not available - node-pty not installed\r\n',
+          showPrompt: true
+        })
+        return
+      }
+      
+      // Broadcast command to all users (don't show to sender, they see it locally)
+      socket.broadcast.emit('terminal_output', { 
         output: `[${username}] $ ${command}\r\n`, 
         fromUser: username 
       })

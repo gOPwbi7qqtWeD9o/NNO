@@ -8,9 +8,10 @@ interface TerminalComponentProps {
   socket: any
   isVisible: boolean
   onClose: () => void
+  username?: string
 }
 
-export default function TerminalComponent({ socket, isVisible, onClose }: TerminalComponentProps) {
+export default function TerminalComponent({ socket, isVisible, onClose, username }: TerminalComponentProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const [currentLine, setCurrentLine] = useState('')
@@ -40,12 +41,29 @@ export default function TerminalComponent({ socket, isVisible, onClose }: Termin
     term.writeln('Connecting to shared terminal session...')
     term.writeln('')
 
+    // Request terminal connection
+    if (socket && socket.connected) {
+      socket.emit('terminal_connect')
+    }
+
     let currentInput = ''
     let cursorPos = 0
+    let isConnected = false
+
+    const showPrompt = () => {
+      const prompt = `[${username || 'user'}] $ `
+      term.write(prompt)
+      return prompt.length
+    }
 
     // Handle keyboard input
     term.onKey(({ key, domEvent }) => {
       const printable = !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey
+
+      if (!isConnected) {
+        term.write('\x07') // Bell sound for not connected
+        return
+      }
 
       if (domEvent.keyCode === 13) { // Enter
         term.writeln('')
@@ -54,11 +72,15 @@ export default function TerminalComponent({ socket, isVisible, onClose }: Termin
           console.log('Socket connected:', socket?.connected)
           // Send command to server
           if (socket && socket.connected) {
-            socket.emit('terminal_command', { command: currentInput.trim() })
+            socket.emit('terminal_command', { command: currentInput.trim(), username: username || 'user' })
           } else {
             term.writeln('Error: Not connected to server')
+            showPrompt()
             return
           }
+        } else {
+          // Empty command, just show new prompt
+          showPrompt()
         }
         currentInput = ''
         cursorPos = 0
@@ -85,22 +107,38 @@ export default function TerminalComponent({ socket, isVisible, onClose }: Termin
       }
     })
 
+    // Listen for terminal ready event
+    const handleTerminalReady = (data: { message: string, shell: string }) => {
+      console.log('Terminal ready:', data)
+      isConnected = true
+      term.writeln(`✓ ${data.message}`)
+      term.writeln(`Shell: ${data.shell}`)
+      term.writeln('')
+      showPrompt() // Show proper prompt with username
+    }
+
     // Listen for terminal output from server
-    const handleTerminalOutput = (data: { output: string, fromUser?: string }) => {
+    const handleTerminalOutput = (data: { output: string, fromUser?: string, showPrompt?: boolean }) => {
       console.log('Received terminal output:', data)
       
       if (data.fromUser) {
         // This is a command echo from another user
         term.writeln(data.output)
       } else {
-        // This is actual terminal output - write it directly without adding prompt
+        // This is actual terminal output - write it directly
         term.write(data.output)
+        // Show prompt after command output if requested
+        if (data.showPrompt && isConnected) {
+          showPrompt()
+        }
       }
     }
 
+    socket?.on('terminal_ready', handleTerminalReady)
     socket?.on('terminal_output', handleTerminalOutput)
 
     return () => {
+      socket?.off('terminal_ready', handleTerminalReady)
       socket?.off('terminal_output', handleTerminalOutput)
       term.dispose()
     }
