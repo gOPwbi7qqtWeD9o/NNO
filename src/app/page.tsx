@@ -302,12 +302,12 @@ export default function TerminalChat() {
       
       const newSocket = io({
         // Optimized for Cloudflare compatibility and stability
-        timeout: 60000,                    // 60 seconds - matches server
+        timeout: 120000,                   // 2 minutes - matches server pingTimeout
         forceNew: false,                   // Reuse existing connection if possible
         reconnection: true,                // Enable automatic reconnection
-        reconnectionDelay: 1000,           // Wait 1 second before first reconnection
-        reconnectionDelayMax: 5000,        // Max 5 seconds between attempts
-        reconnectionAttempts: 20,          // More attempts for flaky connections
+        reconnectionDelay: 2000,           // Wait 2 seconds before first reconnection
+        reconnectionDelayMax: 10000,       // Max 10 seconds between attempts
+        reconnectionAttempts: 10,          // Fewer attempts but longer delays
         transports: ['websocket', 'polling'], // WebSocket first, polling fallback
         // Additional stability settings for Cloudflare
         autoConnect: true,                 // Connect automatically
@@ -345,14 +345,14 @@ export default function TerminalChat() {
         if (newSocket.connected) {
           newSocket.emit('health_check')
         }
-      }, 60000) // Every minute
+      }, 120000) // Every 2 minutes - less frequent
 
       // Store interval ID for cleanup
       const pingInterval = setInterval(() => {
         if (newSocket.connected) {
           newSocket.emit('ping', { timestamp: Date.now() })
         }
-      }, 30000) // Every 30 seconds
+      }, 60000) // Every 60 seconds - less frequent
 
       newSocket.on('disconnect', (reason) => {
         console.log('Disconnected:', reason)
@@ -456,12 +456,12 @@ export default function TerminalChat() {
       // Sanitize typing content (allow empty string for "stopped typing")
       const sanitizedContent = content ? sanitizeMessage(content) : ''
       
-      // Set new timeout if user is typing (65 seconds - slightly longer than server timeout)
+      // Set new timeout if user is typing (3.5 minutes - slightly longer than server timeout)
       if (sanitizedContent) {
         const timeout = setTimeout(() => {
           socket.emit('typing', { username, content: '', userColor })
           setTypingTimeoutRef(null)
-        }, 65000)
+        }, 210000)
         setTypingTimeoutRef(timeout)
       }
       

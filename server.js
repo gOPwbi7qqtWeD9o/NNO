@@ -215,9 +215,9 @@ app.prepare().then(() => {
     transports: ['websocket', 'polling'],
     allowEIO3: true,
     // Connection stability settings optimized for Cloudflare
-    pingTimeout: 60000,        // 60 seconds - matches client timeout
-    pingInterval: 25000,       // 25 seconds - frequent enough to keep connection alive
-    upgradeTimeout: 30000,     // 30 seconds for WebSocket upgrade
+    pingTimeout: 120000,       // 2 minutes - longer timeout to prevent false disconnects
+    pingInterval: 45000,       // 45 seconds - less frequent pings
+    upgradeTimeout: 60000,     // 1 minute for WebSocket upgrade
     maxHttpBufferSize: 1e6,    // 1MB buffer
     // Additional Cloudflare-friendly settings
     connectTimeout: 60000,     // Match client timeout setting
@@ -294,45 +294,16 @@ app.prepare().then(() => {
   const BOT_SCORE_THRESHOLD = 1000 // Cumulative bot score before action (massive increase)
   
   // Typing timeout system
-  const TYPING_TIMEOUT_MS = 60000 // 1 minute timeout
-  const TYPING_CLEANUP_INTERVAL = 30000 // Check every 30 seconds
+  const TYPING_TIMEOUT_MS = 180000 // 3 minutes timeout - longer to reduce cleanup overhead
+  const TYPING_CLEANUP_INTERVAL = 120000 // Check every 2 minutes - less frequent
   
   // Single typing message system to prevent bot spam
   const userTypingStates = new Map() // Track one typing state per username (not socketId)
   
-  // Word filtering system
-  const BANNED_WORDS = [
-    'nigger', 'n1gger', 'n!gger', 'n*gger', 'n@gger', 'n#gger', 'n$gger', 'n%gger',
-    'nigga', 'n1gga', 'n!gga', 'n*gga', 'n@gga', 'n#gga', 'n$gga', 'n%gga',
-    'nig66er', 'ni66er', 'ni6ger', 'nig6er', 'nigg3r', 'nigg€r', 'nigg£r',
-    'n33ger', 'n1gg3r', 'n!gg3r', 'nig33r', 'ni33er', 'n1663r', 'ni663r',
-    'faggot', 'f4ggot', 'f@ggot', 'fag', 'f4g', 'f@g',
-    'retard', 'r3tard', 'r3t4rd', 'retarded', 'r3t4rded',
-    'kike', 'k1ke', 'k!ke', 'spic', 'sp1c', 'sp!c',
-    'chink', 'ch1nk', 'ch!nk', 'gook', 'g00k', 'g0ok',
-    'penisgrinder', 'cyberni66ers', 'poop.net'
-  ]
   
-  function filterOffensiveContent(text) {
-    if (!text || typeof text !== 'string') return text
-    
-    let filteredText = text
-    
-    // Filter banned words (case insensitive)
-    BANNED_WORDS.forEach(word => {
-      const regex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-      filteredText = filteredText.replace(regex, '*'.repeat(word.length))
-    })
-    
-    // Additional filtering for common bypass patterns
-    filteredText = filteredText.replace(/n[\s\-_\.]*i[\s\-_\.]*g[\s\-_\.]*g[\s\-_\.]*[e3][\s\-_\.]*r/gi, '******')
-    filteredText = filteredText.replace(/f[\s\-_\.]*a[\s\-_\.]*g[\s\-_\.]*g[\s\-_\.]*[o0][\s\-_\.]*t/gi, '******')
-    
-    return filteredText
-  }
   
   // Simplified bot protection (Cloudflare handles the heavy lifting)
-  // Keep basic rate limiting and word filtering only
+  // Keep basic rate limiting only
 
   // Basic connection limiting (rely on Cloudflare for bot protection)
   const connectionAttempts = new Map() // Track connection attempts by IP
@@ -623,10 +594,7 @@ app.prepare().then(() => {
       
       // Basic validation only (Cloudflare handles bot protection)
       
-      // Apply word filtering to the message content
-      if (message && message.content) {
-        message.content = filterOffensiveContent(message.content)
-      }
+      // No content filtering - all messages pass through unfiltered
       
       // Check if user is currently in cooldown
       const cooldown = userCooldowns.get(socket.id)
@@ -1101,8 +1069,8 @@ app.prepare().then(() => {
         }
       }
       
-      // Apply word filtering to typing content
-      const filteredContent = content ? filterOffensiveContent(content) : ''
+      // No content filtering - all typing content passes through unfiltered
+      const typingContent = content || ''
       
       // FIRST: Clear any existing typing state for this username
       const existingTypingState = userTypingStates.get(username)
@@ -1119,11 +1087,11 @@ app.prepare().then(() => {
         })
       }
       
-      if (filteredContent) {
+      if (typingContent) {
         // Set new typing state (only one per username)
         userTypingStates.set(username, { 
           username, 
-          content: filteredContent, 
+          content: typingContent, 
           userColor: user?.userColor,
           lastActivity: currentTime,
           socketId: socket.id
@@ -1132,14 +1100,14 @@ app.prepare().then(() => {
         // Also maintain socketId-based tracking for cleanup
         typingStates.set(socket.id, { 
           username, 
-          content: filteredContent, 
+          content: typingContent, 
           userColor: user?.userColor,
           lastActivity: currentTime,
           socketId: socket.id
         })
         
         // Broadcast new typing state to other clients (not the sender)
-        socket.broadcast.emit('typing', { username, content: filteredContent, userColor: user?.userColor })
+        socket.broadcast.emit('typing', { username, content: typingContent, userColor: user?.userColor })
       } else {
         // Clear typing state when user stops typing (already cleared above if existed)
         userTypingStates.delete(username)
@@ -1591,7 +1559,7 @@ app.prepare().then(() => {
         userCooldowns.delete(socket.id)
         
         // Set a timeout for the user leaving announcement
-        // Give them 10 seconds to reconnect before announcing they left (increased for stability)
+        // Give them 30 seconds to reconnect before announcing they left (increased for stability)
         const timeout = setTimeout(() => {
           socket.broadcast.emit('user_left', { username: user.username, userColor: user.userColor })
           console.log(`User left: ${user.username}`)
@@ -1632,7 +1600,7 @@ app.prepare().then(() => {
             })
           }
           console.log(`User count updated: ${connectedUsers.size}`)
-        }, 10000)
+        }, 30000)
         
         disconnectionTimeouts.set(user.username, timeout)
         console.log(`Client disconnected: ${socket.id}, grace period started for: ${user.username}`)
