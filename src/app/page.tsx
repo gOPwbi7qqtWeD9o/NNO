@@ -112,9 +112,16 @@ export default function TerminalChat() {
   const [typingTimeoutRef, setTypingTimeoutRef] = useState<NodeJS.Timeout | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Simple scroll to bottom without detection - just scroll on new messages
+  // Simple scroll to bottom - only scroll when messages increase (not when they're cleaned up)
+  const prevMessageCount = useRef(0)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Only scroll if message count increased (new message) not decreased (cleanup)
+    if (messages.length > prevMessageCount.current) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+      }, 50)
+    }
+    prevMessageCount.current = messages.length
   }, [messages])
 
 
@@ -125,10 +132,7 @@ export default function TerminalChat() {
         console.log('Tab became hidden - maintaining connection')
       } else {
         console.log('Tab became visible - connection should be maintained')
-        // Optionally ping the server to ensure connection is still alive
-        if (socket && isConnected) {
-          socket.emit('ping', { timestamp: Date.now() })
-        }
+        // Remove ping - rely on socket.io's built-in heartbeat
       }
     }
 
@@ -353,29 +357,11 @@ export default function TerminalChat() {
         })
       })
 
-      // Handle pong responses from server
-      newSocket.on('pong', (data) => {
-        const latency = Date.now() - (data.clientTimestamp || data.timestamp)
-        console.log(`Pong received from server, latency: ${latency}ms`)
-      })
-
-      // Handle health check responses
-      newSocket.on('health_response', (data) => {
-        console.log(`Health check response: ${data.status}, Server time: ${data.serverTime}, Users: ${data.connectedUsers}`)
-      })
-
-      // Single keepalive interval - reduced frequency to prevent spam
-      const keepaliveInterval = setInterval(() => {
-        if (newSocket.connected) {
-          newSocket.emit('ping', { timestamp: Date.now() })
-        }
-      }, 300000) // Every 5 minutes - much less frequent
+      // Remove all custom ping/pong handling - use socket.io's built-in heartbeat
 
       newSocket.on('disconnect', (reason) => {
         console.log('Disconnected:', reason)
         setIsConnected(false)
-        // Cleanup interval
-        clearInterval(keepaliveInterval)
         // Don't clear socket here - let reconnection handle it
       })
 
