@@ -112,16 +112,11 @@ export default function TerminalChat() {
   const [typingTimeoutRef, setTypingTimeoutRef] = useState<NodeJS.Timeout | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Simple scroll to bottom - only scroll when messages increase (not when they're cleaned up)
-  const prevMessageCount = useRef(0)
+  // Simple scroll to bottom on any message change - use instant to prevent animation conflicts
   useEffect(() => {
-    // Only scroll if message count increased (new message) not decreased (cleanup)
-    if (messages.length > prevMessageCount.current) {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
-      }, 50)
-    }
-    prevMessageCount.current = messages.length
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+    }, 100)
   }, [messages])
 
 
