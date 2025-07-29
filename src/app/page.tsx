@@ -132,7 +132,10 @@ export default function TerminalChat() {
         console.log('Tab became hidden - maintaining connection')
       } else {
         console.log('Tab became visible - connection should be maintained')
-        // Remove ping - rely on socket.io's built-in heartbeat
+        // Send a single ping when tab becomes visible to check connection
+        if (socket && isConnected) {
+          socket.emit('ping', { timestamp: Date.now() })
+        }
       }
     }
 
@@ -334,17 +337,17 @@ export default function TerminalChat() {
       
       const newSocket = io({
         // Optimized for Cloudflare compatibility and stability
-        timeout: 60000,                    // 1 minute timeout - less aggressive
+        timeout: 30000,                    // 30 second timeout - very conservative  
         forceNew: false,                   // Reuse existing connection if possible
         reconnection: true,                // Enable automatic reconnection
-        reconnectionDelay: 5000,           // Wait 5 seconds before first reconnection
-        reconnectionDelayMax: 30000,       // Max 30 seconds between attempts
-        reconnectionAttempts: 5,           // Fewer reconnection attempts
-        transports: ['websocket', 'polling'], // WebSocket first, polling fallback
-        // Stability settings optimized for less aggressive reconnection
+        reconnectionDelay: 2000,           // Wait 2 seconds before first reconnection
+        reconnectionDelayMax: 10000,       // Max 10 seconds between attempts  
+        reconnectionAttempts: 3,           // Even fewer reconnection attempts
+        transports: ['polling', 'websocket'], // Try polling first, websocket second
+        // Very conservative settings
         autoConnect: true,                 // Connect automatically
-        upgrade: true,                     // Allow WebSocket upgrades
-        rememberUpgrade: true              // Remember successful WebSocket upgrade
+        upgrade: false,                    // Disable websocket upgrades to prevent issues
+        rememberUpgrade: false             // Don't remember upgrades
       })
       
       newSocket.on('connect', () => {
@@ -357,11 +360,24 @@ export default function TerminalChat() {
         })
       })
 
-      // Remove all custom ping/pong handling - use socket.io's built-in heartbeat
+      // Handle pong responses from server
+      newSocket.on('pong', (data) => {
+        const latency = Date.now() - (data.clientTimestamp || data.timestamp)
+        console.log(`Pong received from server, latency: ${latency}ms`)
+      })
+
+      // Single ping interval - less frequent to reduce server load
+      const pingInterval = setInterval(() => {
+        if (newSocket.connected) {
+          newSocket.emit('ping', { timestamp: Date.now() })
+        }
+      }, 180000) // Every 3 minutes - balanced frequency
 
       newSocket.on('disconnect', (reason) => {
         console.log('Disconnected:', reason)
         setIsConnected(false)
+        // Cleanup ping interval
+        clearInterval(pingInterval)
         // Don't clear socket here - let reconnection handle it
       })
 
