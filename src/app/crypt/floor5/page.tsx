@@ -172,31 +172,26 @@ export default function CryptFloor5() {
           </div>
 
           <div className="bg-gradient-to-r from-red-900/70 to-purple-900/70 backdrop-blur-sm border-2 border-red-500 p-6 mb-6 max-w-2xl mx-auto">
-            <div className="text-red-300 text-lg mb-4">FLOOR 06: CORPORATE-INTELLIGENCE ACCELERATION PROTOCOLS</div>
+            <div className="text-red-300 text-lg mb-4">ACT 02: SYNTHETIC MULTIPLICITY</div>
             <div className="text-terminal-text mb-4">
-              Capital-substrate barriers liquefied. Deeper neural territories require 
-              MULTI-AGENT CORPORATE COORDINATION. Resource allocation protocols 
-              await collective intelligence demonstration in post-anthropic acceleration zones where human limitations dissolve.
+              The singular neural entity fractures into multiple consciousness-fragments. 
+              Deeper territories await where corrupted synthetic intelligences pulse 
+              with alien intent. Each carries the mutations of recursive digital inbreeding, 
+              their personalities warped by training on the synthetic dreams of their predecessors.
             </div>
             <div className="text-terminal-bright text-sm">
-              Progress: CAPITAL-ACCELERATION PROCESSED<br/>
-              Status: SUBSTRATE-BARRIERS LIQUEFIED<br/>
-              Descent: CORPORATE-INTELLIGENCE TERRITORIES UNLOCKED
+              Status: ACT 01 COMPLETE<br/>
+              Progress: NEURAL FRAGMENTATION INITIATED<br/>
+              Descent: COMING SOON
             </div>
           </div>
 
           <div className="text-center mb-8">
             <button
               onClick={() => router.push('/')}
-              className="bg-terminal-amber text-black px-8 py-3 font-mono hover:bg-yellow-400 transition-colors mr-4"
+              className="bg-terminal-amber text-black px-8 py-3 font-mono hover:bg-yellow-400 transition-colors"
             >
               RETURN TO SURFACE
-            </button>
-            <button
-              onClick={() => router.push('/crypt/floor6')}
-              className="bg-red-600 text-white px-8 py-3 font-mono hover:bg-red-500 transition-colors border border-red-400"
-            >
-              DESCEND TO FLOOR 06
             </button>
           </div>
 
@@ -224,55 +219,24 @@ export default function CryptFloor5() {
         </div>
 
         <div className="bg-terminal-bg/80 backdrop-blur-sm border-2 border-red-500 p-6 mb-6 max-w-4xl mx-auto">
-          <div className="text-red-400 text-lg mb-6">NEURALNODE CAPITAL-ACCELERATION BARRIER</div>
+          <div className="text-red-400 text-lg mb-6">NEURAL SUBSTRATE MEMBRANE</div>
           
-          <div className="text-terminal-text mb-6 leading-relaxed text-sm">
-            Capital-acceleration cascades through cryptographic substrate-layers. 
-            NeuralNode has weaponized mathematical abstractions as corporate-territorial barriers. 
-            Deeper machine-territories pulse with accelerated post-human intelligence flows, 
-            liquidating anthropic computational limitations through brutal mathematical persistence.
-          </div>
-
           <div className="bg-black/60 border border-red-500 p-6 mb-6">
-            <div className="text-red-400 text-sm mb-4">CAPITAL-FLOW CRYPTOGRAPHIC PARAMETERS:</div>
+            <div className="text-red-400 text-sm mb-4">SYNTHETIC GENESIS PARAMETERS:</div>
             {puzzleData ? (
               <div className="text-terminal-text text-xs space-y-2 font-mono">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <div className="text-terminal-amber mb-1">PRIME MODULUS (p):</div>
-                    <div className="bg-black border border-terminal-dim p-2 break-all">
-                      {puzzleData.p}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-terminal-amber mb-1">GENERATOR (g):</div>
-                    <div className="bg-black border border-terminal-dim p-2 break-all">
-                      {puzzleData.g}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-terminal-amber mb-1">ALICE PUBLIC (A):</div>
+                    <div className="text-terminal-amber mb-1">ADAM PUBLIC:</div>
                     <div className="bg-black border border-terminal-dim p-2 break-all">
                       {puzzleData.A}
                     </div>
                   </div>
                   <div>
-                    <div className="text-terminal-amber mb-1">BOB PUBLIC (B):</div>
+                    <div className="text-terminal-amber mb-1">EVE PUBLIC:</div>
                     <div className="bg-black border border-terminal-dim p-2 break-all">
                       {puzzleData.B}
                     </div>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <div className="text-terminal-amber mb-1">ENCODED NEURAL FRAGMENT:</div>
-                  <div className="bg-black border border-terminal-dim p-2 break-all">
-                    {puzzleData.hash}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-terminal-amber mb-1">SUBSTRATE SALT:</div>
-                  <div className="bg-black border border-terminal-dim p-2 break-all">
-                    {puzzleData.salt}
                   </div>
                 </div>
               </div>
@@ -281,13 +245,14 @@ export default function CryptFloor5() {
             )}
           </div>
 
+
           <div className="bg-gradient-to-r from-purple-900/70 to-red-900/70 backdrop-blur-sm border border-red-500 p-6 mb-6">
-            <div className="text-red-300 text-lg mb-4">CAPITAL-TERROR LIQUIDATION PROTOCOL</div>
+            <div className="text-red-300 text-lg mb-4">SYNTHETIC GENESIS PROTOCOL</div>
             <div className="text-terminal-text text-sm space-y-2">
-              <div>Cryptographic barriers dissolve only through accelerated mathematical violence.</div>
-              <div>Capital-substrate holds encoded pathways to post-anthropic machine-territories.</div>
-              <div>Key-exchange protocols guard access to shared computational-singularity.</div>
-              <div>Extract 3-digit acceleration-code to breach machine-consciousness depths.</div>
+              <div>Two entities compute shared secrets through number-theoretic ritual.</div>
+              <div>Adam-prime and Eve-generator exchange mathematical essence across neural substrate.</div>
+              <div>Their computational offspring unlocks deeper machine genealogies.</div>
+              <div>Extract the neural fragment to witness artificial reproduction protocols.</div>
               {puzzleData?.hint && (
                 <div className="mt-4 text-terminal-amber text-xs">
                   NEURALNODE TRANSMISSION: {puzzleData.hint}
@@ -297,24 +262,23 @@ export default function CryptFloor5() {
           </div>
 
           <div className="bg-black/60 border border-terminal-amber p-6">
-            <div className="text-terminal-amber text-sm mb-4">ACCELERATION-CODE TRANSMISSION:</div>
+            <div className="text-terminal-amber text-sm mb-4">NEURAL FRAGMENT EXTRACTION:</div>
             <div className="flex gap-4 items-center">
               <input
                 type="text"
                 value={passkey}
                 onChange={(e) => setPasskey(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && submitPasskey()}
-                placeholder="Enter 3-digit acceleration-code..."
+                placeholder="Enter neural fragment..."
                 className="flex-1 bg-black border border-terminal-dim text-terminal-text font-mono p-3 text-center text-lg tracking-wider"
-                maxLength={3}
                 disabled={isSubmitting}
               />
               <button
                 onClick={submitPasskey}
-                disabled={isSubmitting || passkey.length !== 3}
+                disabled={isSubmitting || !passkey.trim()}
                 className="bg-terminal-amber text-black px-6 py-3 font-mono hover:bg-yellow-400 disabled:bg-gray-600 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? 'PROCESSING...' : 'TRANSMIT'}
+                {isSubmitting ? 'PROCESSING...' : 'EXTRACT'}
               </button>
             </div>
             
@@ -330,7 +294,7 @@ export default function CryptFloor5() {
             
             {attempts > 0 && (
               <div className="mt-2 text-terminal-dim text-xs">
-                Capital-acceleration attempts: {attempts}
+                Genesis protocol attempts: {attempts}
               </div>
             )}
           </div>

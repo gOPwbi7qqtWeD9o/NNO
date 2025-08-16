@@ -19,23 +19,15 @@ export async function GET(request: NextRequest) {
       }, { status: 403 })
     }
 
-    // Get DH parameters from environment variables
+    // Hardcoded DH parameters for production
     const dhParams = {
-      p: process.env.DH_PRIME_P || '',
-      g: process.env.DH_GENERATOR_G || '',
-      A: process.env.DH_ALICE_PUBLIC_A || '',
-      B: process.env.DH_BOB_PUBLIC_B || '',
-      hash: process.env.DH_SECRET_HASH || '',
-      salt: process.env.DH_SECRET_SALT || '',
-      hint: process.env.DH_HINT || 'The substrate remembers patterns from its genesis.'
-    }
-
-    // Verify all parameters are configured
-    if (!dhParams.p || !dhParams.g || !dhParams.A || !dhParams.B || !dhParams.hash || !dhParams.salt) {
-      console.error('Missing DH puzzle parameters in environment variables')
-      return NextResponse.json({ 
-        error: 'Mathematical substrate configuration incomplete' 
-      }, { status: 500 })
+      p: '47',
+      g: '3',
+      A: '36',
+      B: '2', 
+      hash: '5e5d5f475b5d534a5d5241465f4b4f5452506e7e78667064',
+      salt: 'NEURAL_SUBSTRATE_47',
+      hint: 'Two synthetic entities perform the ritual of shared computation across neural pathways.'
     }
 
     return NextResponse.json(dhParams)

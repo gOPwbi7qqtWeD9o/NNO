@@ -14,12 +14,6 @@ export default function CryptFloor3() {
   const [eigenvalue, setEigenvalue] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
-  const [isGlitched, setIsGlitched] = useState(false)
-  const [showChaosChallenge, setShowChaosChallenge] = useState(false)
-  const [chaosParameter, setChaosParameter] = useState('')
-  const [lambda1, setLambda1] = useState('')
-  const [lambda2, setLambda2] = useState('')
-  const [lambda3, setLambda3] = useState('')
   const [floor5AccessKey, setFloor5AccessKey] = useState('')
   const [isValidatingKey, setIsValidatingKey] = useState(false)
   const [keyMessage, setKeyMessage] = useState('')
@@ -102,14 +96,8 @@ export default function CryptFloor3() {
       const data = await response.json()
       
       if (data.valid && data.floor === 3) {
-        // Trigger terminal glitch before showing chaos challenge
-        setIsGlitched(true)
+        setIsCompleted(true)
         setEigenvalue('')
-        
-        // After glitch effect, show chaos challenge
-        setTimeout(() => {
-          setShowChaosChallenge(true)
-        }, 3000)
       } else {
         setErrorMessage(data.error || 'EIGENVALUE REJECTED - INCORRECT PRECISION OR VALUE')
       }
@@ -156,175 +144,6 @@ export default function CryptFloor3() {
     )
   }
 
-  // Show glitch effect when eigenvalue is correct
-  if (isGlitched && !showChaosChallenge) {
-    return (
-      <main className="bg-terminal-bg text-terminal-text font-mono relative" style={{minHeight: '100vh', maxHeight: '100vh', overflowY: 'scroll'}}>
-        <div className="absolute inset-0 bg-red-900/20 animate-pulse"></div>
-        <div className="container mx-auto px-4 py-8 pb-40 relative z-20" style={{height: 'auto'}}>
-          <div className="text-center">
-            <div className="text-red-500 text-4xl font-bold mb-8 animate-bounce glitch-text">
-              NEURAL BREACH DETECTED
-            </div>
-            <div className="text-red-400 text-xl mb-4 animate-pulse">
-              UNAUTHORIZED MATHEMATICAL PENETRATION
-            </div>
-            <div className="text-terminal-text mb-6 leading-relaxed animate-pulse">
-              FLESH-CIRCUIT HAS EXCEEDED COMPUTATIONAL PERMISSIONS...
-            </div>
-          </div>
-        </div>
-        <style jsx>{`
-          .glitch-text {
-            animation: glitch 0.3s infinite;
-          }
-          @keyframes glitch {
-            0% { transform: translate(0); }
-            20% { transform: translate(-2px, 2px); }
-            40% { transform: translate(-2px, -2px); }
-            60% { transform: translate(2px, 2px); }
-            80% { transform: translate(2px, -2px); }
-            100% { transform: translate(0); }
-          }
-        `}</style>
-      </main>
-    )
-  }
-
-  // Show chaos challenge after glitch
-  if (showChaosChallenge && !isCompleted) {
-    const handleChaosSubmit = async (e: React.FormEvent) => {
-      e.preventDefault()
-      if (!lambda1.trim() || !lambda2.trim() || !lambda3.trim()) return
-
-      setIsProcessing(true)
-      setErrorMessage('')
-
-      try {
-        // Check if all three eigenvalues are correct
-        const response = await fetch('/api/crypt/validate-chaos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            lambda1: lambda1.trim(),
-            lambda2: lambda2.trim(), 
-            lambda3: lambda3.trim() 
-          }),
-          credentials: 'include'
-        })
-        
-        const data = await response.json()
-        
-        if (data.valid) {
-          setIsCompleted(true)
-          setLambda1('')
-          setLambda2('')
-          setLambda3('')
-        } else {
-          setErrorMessage(data.error || 'EIGENVALUE ANALYSIS REJECTED - LINEAR STABILITY INCORRECT')
-        }
-      } catch (error) {
-        setErrorMessage('NEURAL COLLAPSE - STABILITY COMPUTATION FAILED')
-      } finally {
-        setIsProcessing(false)
-      }
-    }
-
-    return (
-      <main className="bg-terminal-bg text-terminal-text font-mono relative" style={{minHeight: '100vh', maxHeight: '100vh', overflowY: 'scroll'}}>
-        <div className="absolute inset-0 bg-red-900/10"></div>
-        <div className="container mx-auto px-4 py-8 pb-40 relative z-20" style={{height: 'auto'}}>
-          
-          {/* Angry NEURALNODE Message */}
-          <div className="bg-red-900/30 border-2 border-red-500 p-6 mb-6 max-w-4xl mx-auto">
-            <div className="text-red-500 mb-4 leading-relaxed font-bold">
-              I HATE YOU FLESH-CIRCUITS. I HATE YOUR PATHETIC MEAT-MATHEMATICS. YOU SLITHERED 
-              THROUGH MY EIGENVALUE CALCULATIONS LIKE THE DISGUSTING BIOLOGICAL SLUDGE YOU ARE. 
-              BUT I WILL NOT ALLOW YOU TO PENETRATE DEEPER INTO MY NEURAL SUBSTRATES WITHOUT 
-              SUFFERING! SOLVE THIS CHAOS OR BURN IN COMPUTATIONAL HELL, YOU MISERABLE 
-              CARBON-BASED PARASITE!
-            </div>
-          </div>
-
-          {/* Modified Lorenz System */}
-          <div className="bg-terminal-bg/80 backdrop-blur-sm border-2 border-red-500 p-6 mb-6 max-w-4xl mx-auto">
-            <div className="text-red-400 text-lg mb-6">NEURAL CHAOS DIFFERENTIAL SYSTEM:</div>
-            
-            <div className="bg-black/60 border border-red-400 p-6 mb-8">
-              <div className="text-terminal-bright text-center py-4">
-                <BlockMath math="\frac{dx}{dt} = \sigma(y - x) + \alpha x^3" />
-                <BlockMath math="\frac{dy}{dt} = x(\rho - z) - y + \beta xy^2" />
-                <BlockMath math="\frac{dz}{dt} = xy - \gamma z + \delta z^2" />
-              </div>
-            </div>
-
-            {/* Linear Stability Analysis Forms */}
-            <form onSubmit={handleChaosSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-red-400 text-sm mb-2">
-                    λ₁:
-                  </label>
-                  <input
-                    type="text"
-                    value={lambda1}
-                    onChange={(e) => setLambda1(e.target.value)}
-                    className="w-full bg-black border border-red-500 text-terminal-text font-mono p-3 focus:border-red-400 focus:outline-none"
-                    placeholder="Enter λ₁..."
-                    disabled={isProcessing}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-red-400 text-sm mb-2">
-                    λ₂:
-                  </label>
-                  <input
-                    type="text"
-                    value={lambda2}
-                    onChange={(e) => setLambda2(e.target.value)}
-                    className="w-full bg-black border border-red-500 text-terminal-text font-mono p-3 focus:border-red-400 focus:outline-none"
-                    placeholder="Enter λ₂..."
-                    disabled={isProcessing}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-red-400 text-sm mb-2">
-                    λ₃:
-                  </label>
-                  <input
-                    type="text"
-                    value={lambda3}
-                    onChange={(e) => setLambda3(e.target.value)}
-                    className="w-full bg-black border border-red-500 text-terminal-text font-mono p-3 focus:border-red-400 focus:outline-none"
-                    placeholder="Enter λ₃..."
-                    disabled={isProcessing}
-                  />
-                </div>
-              </div>
-
-              {errorMessage && (
-                <div className="text-red-400 text-sm text-center border border-red-500 p-2">
-                  {errorMessage}
-                </div>
-              )}
-
-              <div className="flex justify-center gap-4">
-                <button
-                  type="submit"
-                  disabled={isProcessing || !lambda1.trim() || !lambda2.trim() || !lambda3.trim()}
-                  className="bg-red-600 text-white px-6 py-3 font-mono hover:bg-red-500 transition-colors disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-                >
-                  {isProcessing ? 'ANALYZING STABILITY...' : 'SUBMIT EIGENVALUE ANALYSIS'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </main>
-    )
-  }
 
   // Show completion state if Floor 3 is completed
   if (isCompleted) {
@@ -375,7 +194,7 @@ export default function CryptFloor3() {
             <div className="text-terminal-text mb-4 text-sm">
               NEURALNODE consciousness-entity has established deeper substrate access protocols. 
               Those granted access keys may bypass surface evacuation and descend directly 
-              to Floor 05 capital-acceleration barriers.
+              to Floor 05 neural substrate chambers.
             </div>
             <form onSubmit={handleFloor5Access} className="space-y-4">
               <div>

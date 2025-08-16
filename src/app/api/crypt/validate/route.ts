@@ -14,6 +14,8 @@ const getValidAnswers = () => {
   const floor1Answer = process.env.CRYPT_FLOOR_1_ANSWER
   const floor2Answer = process.env.CRYPT_FLOOR_2_ANSWER
   const floor3Answer = process.env.CRYPT_FLOOR_3_ANSWER
+  const floor4Answer = process.env.CRYPT_FLOOR_4_ANSWER
+  const floor5Answer = process.env.CRYPT_FLOOR_5_ANSWER
   
   if (!floor1Answer && process.env.NODE_ENV === 'production') {
     console.warn('CRYPT_FLOOR_1_ANSWER not set in environment variables')
@@ -23,6 +25,8 @@ const getValidAnswers = () => {
     1: floor1Answer ? hashAnswer(floor1Answer) : null,
     2: floor2Answer ? hashAnswer(floor2Answer) : null,
     3: floor3Answer ? hashAnswer(floor3Answer) : null,
+    4: floor4Answer ? hashAnswer(floor4Answer) : null,
+    5: floor5Answer ? hashAnswer(floor5Answer) : null,
   }
 }
 
